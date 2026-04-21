@@ -1,0 +1,33 @@
+{
+  "name": "kleen-contractor",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3101",
+    "dev:auto": "next dev",
+    "build": "next build",
+    "start": "next start -p 3101",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.8.0",
+    "@supabase/supabase-js": "^2.78.0",
+    "lucide-react": "^0.575.0",
+    "next": "14.2.35",
+    "react": "^18",
+    "react-dom": "^18",
+    "resend": "^4.8.0",
+    "stripe": "^17.5.0",
+    "zustand": "^5.0.11"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "eslint": "^8",
+    "eslint-config-next": "14.2.35",
+    "postcss": "^8",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5"
+  }
+}
