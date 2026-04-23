@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { customerAppHref } from "@/lib/customer-app-url";
 import ContractorSidebar from "@/components/contractor/ContractorSidebar";
 import { ContractorPortalContext } from "@/components/contractor/contractor-portal-context";
 import ToastContainer from "@/components/ui/Toast";
@@ -45,11 +44,10 @@ export default function ContractorPortalShell({ children }: { children: React.Re
     }
 
     if (profile.role !== "operative") {
-      const dest = customerAppHref("/dashboard");
-      if (dest.startsWith("http")) {
-        window.location.assign(dest);
+      if (profile.role === "customer") {
+        router.replace("/contractor/join?need_operative=1");
       } else {
-        router.replace(dest);
+        router.replace("/contractor/sign-in?error=not_contractor");
       }
       setLoading(false);
       return;

@@ -55,15 +55,13 @@ export async function GET(request: NextRequest) {
   }
 
   const userId = exchanged?.session?.user?.id;
+  /** Google OAuth from this app always sends `intent=contractor`. Upgrade customer → operative so
+   * existing customer accounts (not just brand-new signups) can use the driver portal onboarding. */
   if (intent === "contractor" && userId) {
     try {
       const admin = createServiceRoleClient();
-      const { data: authUser } = await admin.auth.admin.getUserById(userId);
-      const createdAt = authUser?.user?.created_at ? new Date(authUser.user.created_at) : null;
-      const windowMs = 5 * 60 * 1000;
-      const isRecent = createdAt && Date.now() - createdAt.getTime() < windowMs;
       const { data: prof } = await admin.from("profiles").select("role").eq("id", userId).maybeSingle();
-      if (isRecent && prof?.role === "customer") {
+      if (prof?.role === "customer") {
         await admin.from("profiles").update({ role: "operative" }).eq("id", userId).eq("role", "customer");
       }
     } catch (e) {
