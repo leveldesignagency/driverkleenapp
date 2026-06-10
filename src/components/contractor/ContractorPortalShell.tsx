@@ -170,10 +170,10 @@ export default function ContractorPortalShell({ children }: { children: React.Re
         refresh: bootstrap,
       }}
     >
-      <div className="flex h-screen bg-slate-50">
+      <div className="flex h-screen bg-gradient-to-br from-slate-100 via-slate-50 to-brand-50/30">
         <ContractorSidebar />
         <main className="flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 lg:max-w-4xl lg:py-8">{children}</div>
+          <div className="mx-auto w-full max-w-7xl px-5 py-6 sm:px-8 lg:py-10">{children}</div>
         </main>
         <ToastContainer />
       </div>

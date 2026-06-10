@@ -17,7 +17,7 @@ function SignInContent() {
 
   const preMessage =
     errQ === "not_contractor"
-      ? "This account is not a contractor. Use the links below to book as a customer, or contact Kleen to add driver access."
+      ? "This account is not a contractor. Use the links below to book as a customer, or contact Kleen to add contractor access."
       : errQ === "auth"
         ? "Sign-in could not be completed. Try again."
         : null;

@@ -50,12 +50,13 @@ function JoinContent() {
           </p>
         )}
         <p className="mt-2 text-center text-sm text-slate-600">
-          Create an account with the <strong>contractor</strong> role. After sign-in you will add company details,
-          services, and (once Kleen has verified you in the admin app) Stripe for payouts.
+          Sign in with Google to start your <strong>contractor application</strong>. You will complete company details,
+          services, and bank details in the portal, then submit for Kleen to review.
         </p>
         <p className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-center text-xs text-slate-600">
-          New accounts stay <strong>pending</strong> until Kleen approves you under <strong>Contractors</strong> in the
-          admin dashboard. You can complete profile and services while you wait; jobs and payouts unlock after approval.
+          Your account stays <strong>pending</strong> until Kleen approves you in the admin dashboard. Complete every
+          step in the onboarding checklist, tap <strong>Send for review</strong>, then wait for verification before
+          jobs unlock.
         </p>
 
         <div className="mt-8 space-y-4">

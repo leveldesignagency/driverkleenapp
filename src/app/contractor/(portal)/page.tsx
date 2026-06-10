@@ -8,14 +8,8 @@ import { FileText, Landmark, Briefcase, UserRound, ShieldAlert, CheckCircle2, Ci
 
 type OnboardingStep = { label: string; done: boolean; href?: string };
 
-function isMissingSubmittedForReviewColumn(message: string) {
-  const m = message.toLowerCase();
-  return m.includes("submitted_for_review_at") || m.includes("schema cache");
-}
-
 export default function ContractorHomePage() {
   const { operativeId, isVerified, rejectionMessage } = useContractorPortal();
-  const [stripeId, setStripeId] = useState<string | null>(null);
   const [serviceCount, setServiceCount] = useState<number | null>(null);
   const [onboardingSteps, setOnboardingSteps] = useState<OnboardingStep[] | null>(null);
   const [submittedForReviewAt, setSubmittedForReviewAt] = useState<string | null>(null);
@@ -26,7 +20,6 @@ export default function ContractorHomePage() {
     const supabase = createClient();
     (async () => {
       const { data: op } = await supabase.from("operatives").select("*").eq("id", operativeId).single();
-      setStripeId((op as { stripe_account_id?: string } | null)?.stripe_account_id || null);
       setSubmittedForReviewAt((op as { submitted_for_review_at?: string } | null)?.submitted_for_review_at || null);
 
       const { count } = await supabase
@@ -50,7 +43,7 @@ export default function ContractorHomePage() {
         !!(o?.bank_account_name && String(o.bank_account_name).trim()) &&
         sortDigits.length >= 6 &&
         acctDigits.length >= 8;
-      const bankPaymentsOk = bankDetailsOk || !!o?.stripe_account_id;
+      const bankPaymentsOk = bankDetailsOk;
       setOnboardingSteps([
         { label: "Add a UK phone number", done: phoneOk, href: "/contractor/profile" },
         {
@@ -61,7 +54,7 @@ export default function ContractorHomePage() {
         { label: "At least one service area", done: areas > 0, href: "/contractor/profile" },
         { label: "At least one service with contract text", done: n >= 1, href: "/contractor/services" },
         {
-          label: "Bank details & Stripe (save bank anytime; Stripe after Kleen verifies you)",
+          label: "UK bank details for payouts",
           done: bankPaymentsOk,
           href: "/contractor/payouts",
         },
@@ -72,9 +65,13 @@ export default function ContractorHomePage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Contractor portal</h1>
+        <h1 className="text-2xl font-bold text-slate-900">
+          {isVerified ? "Contractor portal" : "Your contractor application"}
+        </h1>
         <p className="mt-1 text-sm text-slate-600">
-          Manage your company profile, service contracts, Stripe payouts, and job invitations from Kleen.
+          {isVerified
+            ? "Manage your company profile, browse local jobs, submit quotes, and track assigned work."
+            : "Complete every step below, then send your application to Kleen for review."}
         </p>
       </div>
 
@@ -97,9 +94,9 @@ export default function ContractorHomePage() {
           <div>
             <p className="font-medium">Verification pending</p>
             <p className="mt-0.5 text-amber-800/90">
-              Complete the onboarding checklist below: UK company details, service areas, and at least one service
-              contract. Bank details can wait until after approval (Payouts). Kleen reviews applications in the admin
-              app — jobs and Stripe payouts unlock once you are verified.
+              Complete the checklist: UK company details, service areas, at least one service contract, and UK bank
+              details. When everything is done, tap <strong>Send for review</strong>. Kleen reviews in the admin app —
+              jobs unlock after you are verified.
             </p>
           </div>
         </div>
@@ -109,7 +106,7 @@ export default function ContractorHomePage() {
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <p className="text-sm font-semibold text-slate-900">Onboarding checklist</p>
           <p className="mt-1 text-xs text-slate-500">
-            Complete these so Kleen can verify you. Bank details are optional until you are approved.
+            All items must be complete before you can send your application to Kleen.
           </p>
           <ul className="mt-4 space-y-2.5">
             {onboardingSteps.map((step) => (
@@ -147,43 +144,20 @@ export default function ContractorHomePage() {
                   disabled={submittingReview}
                   onClick={async () => {
                     setSubmittingReview(true);
-                    const supabase = createClient();
-                    const now = new Date().toISOString();
-                    const { error: fullErr } = await supabase
-                      .from("operatives")
-                      .update({
-                        submitted_for_review_at: now,
-                        rejected_at: null,
-                        rejection_message: null,
-                      })
-                      .eq("id", operativeId);
-
-                    let error = fullErr;
-                    if (error && isMissingSubmittedForReviewColumn(error.message)) {
-                      const { error: retryErr } = await supabase
-                        .from("operatives")
-                        .update({
-                          rejected_at: null,
-                          rejection_message: null,
-                        })
-                        .eq("id", operativeId);
-                      error = retryErr;
-                      if (!error) {
-                        alert(
-                          "Your rejection notice was cleared, but the database is missing column operatives.submitted_for_review_at. " +
-                            "Run migration 036 (or kleen-app/supabase/manual/add_submitted_for_review_at_column.sql) in Supabase so admins can see you in the review queue."
-                        );
-                        setSubmittingReview(false);
-                        return;
-                      }
-                    }
-
+                    const res = await fetch("/api/contractor/submit-for-review", {
+                      method: "POST",
+                      credentials: "include",
+                    });
+                    const json = (await res.json().catch(() => ({}))) as {
+                      error?: string;
+                      submitted_for_review_at?: string;
+                    };
                     setSubmittingReview(false);
-                    if (error) {
-                      alert(error.message);
+                    if (!res.ok) {
+                      alert(json.error || "Could not submit for review");
                       return;
                     }
-                    setSubmittedForReviewAt(now);
+                    setSubmittedForReviewAt(json.submitted_for_review_at || new Date().toISOString());
                   }}
                   className="mt-3 rounded-lg bg-emerald-700 px-3.5 py-2 text-xs font-semibold text-white hover:bg-emerald-600 disabled:opacity-60"
                 >
@@ -225,14 +199,8 @@ export default function ContractorHomePage() {
         >
           <Landmark className="h-8 w-8 text-brand-600" />
           <div>
-            <p className="font-semibold text-slate-900">Bank &amp; payments</p>
-            <p className="mt-1 text-sm text-slate-600">
-              {isVerified
-                ? stripeId
-                  ? "Stripe linked — open Stripe to update bank details."
-                  : "Save UK bank details; connect Stripe for payouts."
-                : "Save UK bank details here. Stripe Connect after Kleen verifies you."}
-            </p>
+            <p className="font-semibold text-slate-900">Bank details</p>
+            <p className="mt-1 text-sm text-slate-600">UK account for Kleen payouts — no Stripe setup needed.</p>
           </div>
         </Link>
         {isVerified ? (
@@ -243,7 +211,7 @@ export default function ContractorHomePage() {
             <Briefcase className="h-8 w-8 text-brand-600" />
             <div>
               <p className="font-semibold text-slate-900">Jobs &amp; quotes</p>
-              <p className="mt-1 text-sm text-slate-600">Invitations to quote and your submitted quotes.</p>
+              <p className="mt-1 text-sm text-slate-600">Browse local jobs, submit quotes, and track assigned work.</p>
             </div>
           </Link>
         ) : (

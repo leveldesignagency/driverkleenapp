@@ -27,6 +27,8 @@ export default function ContractorProfilePage() {
   const [registeredAddress, setRegisteredAddress] = useState("");
   const [areaInput, setAreaInput] = useState("");
   const [serviceAreas, setServiceAreas] = useState<string[]>([]);
+  const [basePostcode, setBasePostcode] = useState("");
+  const [maxTravelRadius, setMaxTravelRadius] = useState(25);
   const [authEmail, setAuthEmail] = useState("");
 
   useEffect(() => {
@@ -50,6 +52,8 @@ export default function ContractorProfilePage() {
         setTradingName((op as { trading_name?: string }).trading_name || "");
         setRegisteredAddress((op as { registered_address?: string }).registered_address || "");
         setServiceAreas(Array.isArray(op.service_areas) ? op.service_areas : []);
+        setBasePostcode(String((op as { base_postcode?: string }).base_postcode || ""));
+        setMaxTravelRadius(Number((op as { max_travel_radius_miles?: number }).max_travel_radius_miles) || 25);
       }
       setLoading(false);
     })();
@@ -82,14 +86,18 @@ export default function ContractorProfilePage() {
       trading_name: tradingName.trim() || null,
       registered_address: registeredAddress.trim() || null,
       service_areas: serviceAreas,
+      base_postcode: basePostcode.trim().toUpperCase() || null,
+      max_travel_radius_miles: maxTravelRadius,
     };
 
     let { error } = await supabase.from("operatives").update(payload).eq("id", operativeId);
     // Until migration 034 is applied, UK columns may be missing — retry without them.
-    if (error?.message && /trading_name|registered_address|does not exist|schema cache/i.test(error.message)) {
+    if (error?.message && /trading_name|registered_address|base_postcode|max_travel_radius|does not exist|schema cache/i.test(error.message)) {
       const rest = { ...payload } as Record<string, unknown>;
       delete rest.trading_name;
       delete rest.registered_address;
+      delete rest.base_postcode;
+      delete rest.max_travel_radius_miles;
       const second = await supabase.from("operatives").update(rest).eq("id", operativeId);
       error = second.error;
     }
@@ -128,7 +136,7 @@ export default function ContractorProfilePage() {
         <p className="mt-1 text-sm text-slate-600">
           UK-focused business details for Kleen&apos;s verification. Add bank details under{" "}
           <Link href="/contractor/payouts" className="font-medium text-brand-600 hover:underline">
-            Bank &amp; payments
+            Bank details
           </Link>
           .
         </p>
@@ -254,6 +262,36 @@ export default function ContractorProfilePage() {
             <button type="button" onClick={addArea} className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200">
               Add
             </button>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="text-sm font-semibold text-slate-900">Travel &amp; job search</h2>
+          <p className="mt-1 text-xs text-slate-500">
+            Used on the Jobs dashboard to show local work within your radius.
+          </p>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <label className="block">
+              <span className="text-xs font-medium text-slate-500">Base postcode</span>
+              <input
+                value={basePostcode}
+                onChange={(e) => setBasePostcode(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm uppercase"
+                placeholder="e.g. SW1A 1AA"
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs font-medium text-slate-500">Max travel radius: {maxTravelRadius} miles</span>
+              <input
+                type="range"
+                min={5}
+                max={100}
+                step={5}
+                value={maxTravelRadius}
+                onChange={(e) => setMaxTravelRadius(Number(e.target.value))}
+                className="mt-3 w-full accent-brand-600"
+              />
+            </label>
           </div>
         </div>
 
