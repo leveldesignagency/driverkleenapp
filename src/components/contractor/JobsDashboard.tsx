@@ -607,6 +607,14 @@ function InviteQuoteForm({
           Est. hours
           <input type="number" step="0.25" value={hours} onChange={(e) => setHours(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
         </label>
+        <label className="text-xs sm:col-span-2">
+          Earliest date
+          <input type="date" value={avail} onChange={(e) => setAvail(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+        </label>
+        <label className="text-xs sm:col-span-2">
+          Notes
+          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+        </label>
       </div>
       <button type="submit" disabled={busy} className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
         {busy ? "Submitting…" : "Submit quote"}

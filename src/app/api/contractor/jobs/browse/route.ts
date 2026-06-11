@@ -6,8 +6,6 @@ import {
   postcodeMatchesServiceAreas,
 } from "@/lib/postcode-distance";
 
-const CUSTOMER_MARKUP = 1.175;
-
 export async function GET() {
   const supabase = createServerSupabaseClient();
   const {
