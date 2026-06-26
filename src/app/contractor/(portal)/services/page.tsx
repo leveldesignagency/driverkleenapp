@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useContractorPortal } from "@/components/contractor/contractor-portal-context";
 import CustomDropdown from "@/components/ui/CustomDropdown";
+import { EXPECTED_CATALOG_SIZE, getStaticServiceCatalog, mergeServiceCatalog } from "@/lib/service-catalog";
 import { Loader2, Trash2 } from "lucide-react";
 
 type ServiceRow = { id: string; name: string };
@@ -16,15 +17,21 @@ type OsRow = {
   services?: { name: string } | { name: string }[] | null;
 };
 
+function matchServiceQuery(name: string, query: string) {
+  return name.toLowerCase().includes(query.trim().toLowerCase());
+}
+
 export default function ContractorServicesPage() {
   const { operativeId } = useContractorPortal();
-  const [catalog, setCatalog] = useState<ServiceRow[]>([]);
+  const [catalog, setCatalog] = useState<ServiceRow[]>(getStaticServiceCatalog());
   const [rows, setRows] = useState<OsRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [catalogWarning, setCatalogWarning] = useState<string | null>(null);
   const [addServiceId, setAddServiceId] = useState("");
   const [addTitle, setAddTitle] = useState("");
   const [addFull, setAddFull] = useState("");
   const [addPreview, setAddPreview] = useState("");
+  const [addSearchQuery, setAddSearchQuery] = useState("");
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -37,16 +44,29 @@ export default function ContractorServicesPage() {
         .select("id, service_id, contract_title, contract_content, contract_content_preview, services(name)")
         .eq("operative_id", operativeId),
     ]);
+
     const catalogJson = (await catalogRes.json().catch(() => ({}))) as {
       services?: ServiceRow[];
-      error?: string;
+      syncWarning?: string;
+      count?: number;
     };
-    if (!catalogRes.ok) {
-      alert(catalogJson.error || "Could not load service catalogue");
-      setCatalog([]);
+
+    if (catalogRes.ok && catalogJson.services?.length) {
+      setCatalog(mergeServiceCatalog(catalogJson.services));
+      setCatalogWarning(catalogJson.syncWarning || null);
     } else {
-      setCatalog(catalogJson.services || []);
+      const { data: dbServices } = await supabase
+        .from("services")
+        .select("id, name")
+        .eq("is_active", true)
+        .order("name");
+      setCatalog(mergeServiceCatalog(dbServices ?? []));
+      setCatalogWarning(
+        catalogJson.syncWarning ||
+          (!catalogRes.ok ? "Could not refresh catalogue from server — showing full Kleen list." : null),
+      );
     }
+
     setRows((os as OsRow[]) || []);
     setLoading(false);
   }, [operativeId]);
@@ -56,13 +76,35 @@ export default function ContractorServicesPage() {
     load();
   }, [load]);
 
+  const linkedById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const r of rows) {
+      const sn = Array.isArray(r.services) ? r.services[0]?.name : r.services?.name;
+      map.set(r.service_id, sn || r.service_id);
+    }
+    return map;
+  }, [rows]);
+
   const usedIds = new Set(rows.map((r) => r.service_id));
   const canAdd = catalog.filter((s) => !usedIds.has(s.id));
+
+  const dropdownEmptyMessage = useMemo(() => {
+    const q = addSearchQuery.trim();
+    if (!q) return "No services available to add";
+    const linkedMatch = Array.from(linkedById.entries()).find(([, name]) => matchServiceQuery(name, q));
+    if (linkedMatch) {
+      return `${linkedMatch[1]} is already on your profile — edit it above or remove it to add again.`;
+    }
+    return `No services match “${q}”`;
+  }, [addSearchQuery, linkedById]);
 
   const addService = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!operativeId || !addServiceId || !addFull.trim()) return;
     setSaving(true);
+
+    await fetch("/api/contractor/services/catalog", { credentials: "include" }).catch(() => null);
+
     const supabase = createClient();
     const { error } = await supabase.from("operative_services").insert({
       operative_id: operativeId,
@@ -74,7 +116,11 @@ export default function ContractorServicesPage() {
     });
     setSaving(false);
     if (error) {
-      alert(error.message);
+      alert(
+        error.message.includes("foreign key") || error.message.includes("services")
+          ? `${error.message}\n\nThe service catalogue may still be syncing — try again in a moment.`
+          : error.message,
+      );
       return;
     }
     setAddServiceId("");
@@ -86,7 +132,7 @@ export default function ContractorServicesPage() {
 
   const updateRow = async (
     id: string,
-    patch: { contract_title?: string | null; contract_content?: string | null; contract_content_preview?: string | null }
+    patch: { contract_title?: string | null; contract_content?: string | null; contract_content_preview?: string | null },
   ) => {
     const supabase = createClient();
     const { error } = await supabase
@@ -126,6 +172,10 @@ export default function ContractorServicesPage() {
           an optional preview; the full text is emailed after they pay.
         </p>
       </div>
+
+      {catalogWarning && (
+        <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">{catalogWarning}</p>
+      )}
 
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="text-sm font-semibold text-slate-900">Your services</h2>
@@ -194,9 +244,15 @@ export default function ContractorServicesPage() {
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="text-sm font-semibold text-slate-900">Add service</h2>
         {canAdd.length === 0 ? (
-          <p className="mt-2 text-sm text-slate-500">All active catalogue services are already linked.</p>
+          <p className="mt-2 text-sm text-slate-500">
+            All {EXPECTED_CATALOG_SIZE} Kleen catalogue services are already linked to your profile.
+          </p>
         ) : (
           <form onSubmit={addService} className="mt-4 space-y-3">
+            <p className="text-xs text-slate-500">
+              {canAdd.length} of {EXPECTED_CATALOG_SIZE} services available to add. Services already on your profile
+              won&apos;t appear here — search for something else (e.g. Patio, Gutter Clearing).
+            </p>
             <label className="block text-xs">
               <span className="text-slate-500">Service</span>
               <CustomDropdown
@@ -207,6 +263,8 @@ export default function ContractorServicesPage() {
                 className="mt-1"
                 searchable
                 searchPlaceholder="Type to find a service…"
+                emptyMessage={dropdownEmptyMessage}
+                onSearchQueryChange={setAddSearchQuery}
               />
             </label>
             <label className="block text-xs">

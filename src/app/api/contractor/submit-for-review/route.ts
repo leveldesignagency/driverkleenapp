@@ -86,6 +86,10 @@ export async function POST() {
     fullName: String(updated.full_name || "Contractor"),
     email: String(updated.email || user.email || ""),
     companyName: String(updated.company_name || updated.trading_name || ""),
+  }).then((result) => {
+    if (!result.ok) {
+      console.error("submit-for-review admin email:", result.error);
+    }
   });
 
   return NextResponse.json({

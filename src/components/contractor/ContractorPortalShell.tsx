@@ -90,6 +90,11 @@ export default function ContractorPortalShell({ children }: { children: React.Re
         return;
       }
       op = inserted;
+
+      void fetch("/api/contractor/notify-admin-signup", {
+        method: "POST",
+        credentials: "include",
+      }).catch((e) => console.warn("notify-admin-signup failed:", e));
     }
 
     const row = op as Record<string, unknown>;

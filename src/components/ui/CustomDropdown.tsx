@@ -17,6 +17,10 @@ interface CustomDropdownProps {
   className?: string;
   searchable?: boolean;
   searchPlaceholder?: string;
+  /** Shown when search/filter returns no options (e.g. already linked). */
+  emptyMessage?: string;
+  /** Called when the search box text changes (searchable dropdowns). */
+  onSearchQueryChange?: (query: string) => void;
 }
 
 export default function CustomDropdown({
@@ -28,6 +32,8 @@ export default function CustomDropdown({
   className = "",
   searchable = false,
   searchPlaceholder = "Type to find…",
+  emptyMessage = "No results",
+  onSearchQueryChange,
 }: CustomDropdownProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -42,8 +48,11 @@ export default function CustomDropdown({
   }, []);
 
   useEffect(() => {
-    if (!open) setQuery("");
-  }, [open]);
+    if (!open) {
+      setQuery("");
+      onSearchQueryChange?.("");
+    }
+  }, [open, onSearchQueryChange]);
 
   const selected = options.find((o) => o.value === value);
   const normalizedQuery = query.trim().toLowerCase();
@@ -74,7 +83,10 @@ export default function CustomDropdown({
               <input
                 type="text"
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  onSearchQueryChange?.(e.target.value);
+                }}
                 placeholder={searchPlaceholder}
                 className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
                 autoFocus
@@ -103,7 +115,7 @@ export default function CustomDropdown({
             );
           })}
           {visibleOptions.length === 0 && (
-            <p className="px-3 py-2 text-sm text-slate-500">No results</p>
+            <p className="px-3 py-2 text-sm text-slate-500">{emptyMessage}</p>
           )}
         </div>
       )}
