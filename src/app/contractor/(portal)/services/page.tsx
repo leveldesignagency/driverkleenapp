@@ -30,14 +30,23 @@ export default function ContractorServicesPage() {
   const load = useCallback(async () => {
     if (!operativeId) return;
     const supabase = createClient();
-    const [{ data: svc }, { data: os }] = await Promise.all([
-      supabase.from("services").select("id, name").eq("is_active", true).order("name"),
+    const [catalogRes, { data: os }] = await Promise.all([
+      fetch("/api/contractor/services/catalog", { credentials: "include" }),
       supabase
         .from("operative_services")
         .select("id, service_id, contract_title, contract_content, contract_content_preview, services(name)")
         .eq("operative_id", operativeId),
     ]);
-    setCatalog((svc as ServiceRow[]) || []);
+    const catalogJson = (await catalogRes.json().catch(() => ({}))) as {
+      services?: ServiceRow[];
+      error?: string;
+    };
+    if (!catalogRes.ok) {
+      alert(catalogJson.error || "Could not load service catalogue");
+      setCatalog([]);
+    } else {
+      setCatalog(catalogJson.services || []);
+    }
     setRows((os as OsRow[]) || []);
     setLoading(false);
   }, [operativeId]);
