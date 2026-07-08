@@ -387,19 +387,22 @@ export default function OnboardingModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-white">
-      <header className="shrink-0 border-b border-slate-200 bg-white px-5 py-4 sm:px-8">
-        <p className="text-xs font-semibold uppercase tracking-wide text-brand-600">Contractor application</p>
-        <h1 className="mt-1 text-xl font-bold text-slate-900 sm:text-2xl">Complete your Kleen profile</h1>
-        <p className="mt-1 text-sm text-slate-600">
-          Finish every step below, then send your application for review.
-        </p>
+    <div className="fixed inset-0 z-50 flex flex-col bg-slate-50">
+      <header className="shrink-0 border-b border-slate-200 bg-white">
+        <div className="mx-auto w-full max-w-6xl px-5 py-5 sm:px-8">
+          <p className="text-xs font-semibold uppercase tracking-wide text-brand-600">Contractor application</p>
+          <h1 className="mt-1 text-xl font-bold text-slate-900 sm:text-2xl">Complete your Kleen profile</h1>
+          <p className="mt-1 text-sm text-slate-600">
+            Finish every step below, then send your application for review.
+          </p>
+        </div>
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-        <aside className="shrink-0 border-b border-slate-200 bg-slate-50 px-5 py-4 lg:w-72 lg:border-b-0 lg:border-r lg:py-8">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Checklist</p>
-          <ul className="mt-3 space-y-2">
+      <div className="flex min-h-0 flex-1 justify-center overflow-hidden px-5 py-5 sm:px-8 sm:py-6">
+        <div className="flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-5 lg:flex-row lg:gap-8">
+          <aside className="shrink-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:w-72 lg:self-start lg:p-5">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Checklist</p>
+            <ul className="mt-3 space-y-1.5">
             {steps
               .filter((s) => s.id !== "review")
               .map((step) => (
@@ -437,9 +440,10 @@ export default function OnboardingModal({
               </button>
             </li>
           </ul>
-        </aside>
+          </aside>
 
-        <main className="min-h-0 flex-1 overflow-y-auto px-5 py-6 sm:px-8 lg:py-8">
+          <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6 lg:p-8">
           {rejectionMessage && (
             <div className="mb-6 flex gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
               <ShieldAlert className="h-5 w-5 shrink-0" />
@@ -457,7 +461,7 @@ export default function OnboardingModal({
           )}
 
           {activeStep === "identity" && (
-            <section className="mx-auto max-w-xl space-y-6">
+            <section className="space-y-6">
               <div>
                 <h2 className="text-lg font-semibold text-slate-900">Name &amp; company</h2>
                 <p className="mt-1 text-sm text-slate-600">How Kleen should list you on your contractor profile.</p>
@@ -527,7 +531,7 @@ export default function OnboardingModal({
           )}
 
           {activeStep === "contact" && (
-            <section className="mx-auto max-w-xl space-y-6">
+            <section className="space-y-6">
               <div>
                 <h2 className="text-lg font-semibold text-slate-900">Contact &amp; business address</h2>
                 <p className="mt-1 text-sm text-slate-600">UK contact details for Kleen and your customers.</p>
@@ -560,7 +564,7 @@ export default function OnboardingModal({
           )}
 
           {activeStep === "coverage" && (
-            <section className="mx-auto max-w-xl space-y-6">
+            <section className="space-y-6">
               <div>
                 <h2 className="text-lg font-semibold text-slate-900">Service areas</h2>
                 <p className="mt-1 text-sm text-slate-600">Regions you cover — add at least one (e.g. London, Surrey).</p>
@@ -607,7 +611,7 @@ export default function OnboardingModal({
           )}
 
           {activeStep === "services" && (
-            <section className="mx-auto max-w-2xl space-y-6">
+            <section className="space-y-6">
               <div>
                 <h2 className="text-lg font-semibold text-slate-900">Services</h2>
                 <p className="mt-1 text-sm text-slate-600">
@@ -674,7 +678,7 @@ export default function OnboardingModal({
           )}
 
           {activeStep === "bank" && (
-            <section className="mx-auto max-w-xl space-y-6">
+            <section className="space-y-6">
               <div>
                 <h2 className="text-lg font-semibold text-slate-900">UK bank details</h2>
                 <p className="mt-1 text-sm text-slate-600">For Kleen payouts — no Stripe setup required.</p>
@@ -716,7 +720,7 @@ export default function OnboardingModal({
           )}
 
           {activeStep === "review" && (
-            <section className="mx-auto max-w-xl space-y-6">
+            <section className="space-y-6">
               <div>
                 <h2 className="text-lg font-semibold text-slate-900">Review &amp; submit</h2>
                 <p className="mt-1 text-sm text-slate-600">
@@ -768,7 +772,9 @@ export default function OnboardingModal({
               </button>
             </section>
           )}
-        </main>
+            </div>
+          </main>
+        </div>
       </div>
     </div>
   );
