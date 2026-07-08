@@ -4,7 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import ContractorSidebar from "@/components/contractor/ContractorSidebar";
-import OnboardingModal from "@/components/contractor/OnboardingModal";
+import ContractorApplication from "@/components/contractor/ContractorApplication";
+import ApplicationPendingScreen from "@/components/contractor/ApplicationPendingScreen";
 import { ContractorPortalContext } from "@/components/contractor/contractor-portal-context";
 import ToastContainer from "@/components/ui/Toast";
 import { Loader2 } from "lucide-react";
@@ -12,11 +13,11 @@ import { Loader2 } from "lucide-react";
 export default function ContractorPortalShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [operativeId, setOperativeId] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
   const [isVerified, setIsVerified] = useState(false);
   const [rejectedAt, setRejectedAt] = useState<string | null>(null);
   const [rejectionMessage, setRejectionMessage] = useState<string | null>(null);
   const [submittedForReviewAt, setSubmittedForReviewAt] = useState<string | null>(null);
-  const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deactivated, setDeactivated] = useState(false);
@@ -33,6 +34,8 @@ export default function ContractorPortalShell({ children }: { children: React.Re
       setLoading(false);
       return;
     }
+
+    setUserEmail(user.email || null);
 
     const { data: profile, error: pErr } = await supabase
       .from("profiles")
@@ -56,7 +59,6 @@ export default function ContractorPortalShell({ children }: { children: React.Re
       return;
     }
 
-    // Use * so the app works before migration 034 adds rejected_* / verification columns.
     let { data: op } = await supabase.from("operatives").select("*").eq("user_id", user.id).maybeSingle();
 
     if (op && op.is_active === false) {
@@ -87,7 +89,7 @@ export default function ContractorPortalShell({ children }: { children: React.Re
         setError(
           insErr.message.includes("duplicate") || insErr.code === "23505"
             ? "A contractor record may already exist for another account. Contact Kleen support."
-            : insErr.message
+            : insErr.message,
         );
         setLoading(false);
         return;
@@ -105,13 +107,7 @@ export default function ContractorPortalShell({ children }: { children: React.Re
     setIsVerified(!!row.is_verified);
     setRejectedAt(row.rejected_at ? String(row.rejected_at) : null);
     setRejectionMessage(row.rejection_message ? String(row.rejection_message) : null);
-    const submitted = row.submitted_for_review_at ? String(row.submitted_for_review_at) : null;
-    setSubmittedForReviewAt(submitted);
-    if (!row.is_verified) {
-      setOnboardingOpen(!submitted || !!row.rejection_message);
-    } else {
-      setOnboardingOpen(false);
-    }
+    setSubmittedForReviewAt(row.submitted_for_review_at ? String(row.submitted_for_review_at) : null);
     setLoading(false);
   }, [router]);
 
@@ -133,8 +129,7 @@ export default function ContractorPortalShell({ children }: { children: React.Re
         <div className="max-w-md rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
           <p className="text-lg font-semibold text-slate-900">Contractor account deactivated</p>
           <p className="mt-2 text-sm text-slate-600">
-            This profile has been turned off by Kleen. You cannot access the portal until it is reactivated. Contact
-            Kleen if you need help.
+            This profile has been turned off by Kleen. Contact support if you need help.
           </p>
           <button
             type="button"
@@ -174,6 +169,23 @@ export default function ContractorPortalShell({ children }: { children: React.Re
     return null;
   }
 
+  const pendingReview = !isVerified && submittedForReviewAt && !rejectedAt;
+  const needsApplication = !isVerified && !pendingReview;
+
+  if (pendingReview) {
+    return <ApplicationPendingScreen submittedAt={submittedForReviewAt} email={userEmail} />;
+  }
+
+  if (needsApplication) {
+    return (
+      <ContractorApplication
+        operativeId={operativeId}
+        rejectionMessage={rejectionMessage}
+        onSubmitted={bootstrap}
+      />
+    );
+  }
+
   return (
     <ContractorPortalContext.Provider
       value={{
@@ -184,7 +196,7 @@ export default function ContractorPortalShell({ children }: { children: React.Re
         rejectionMessage,
         submittedForReviewAt,
         refresh: bootstrap,
-        reopenOnboarding: () => setOnboardingOpen(true),
+        reopenOnboarding: () => {},
       }}
     >
       <div className="flex h-screen bg-gradient-to-br from-slate-100 via-slate-50 to-brand-50/30">
@@ -194,14 +206,6 @@ export default function ContractorPortalShell({ children }: { children: React.Re
         </main>
         <ToastContainer />
       </div>
-      {!isVerified && onboardingOpen && (
-        <OnboardingModal
-          operativeId={operativeId}
-          rejectionMessage={rejectionMessage}
-          onComplete={() => setOnboardingOpen(false)}
-          onRefresh={bootstrap}
-        />
-      )}
     </ContractorPortalContext.Provider>
   );
 }

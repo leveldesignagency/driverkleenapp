@@ -19,11 +19,7 @@ export async function POST() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
+  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
 
   if (profile?.role !== "operative") {
     return NextResponse.json({ error: "Contractor account required" }, { status: 403 });
@@ -43,14 +39,21 @@ export async function POST() {
     return NextResponse.json({ error: "Your account is already verified" }, { status: 400 });
   }
 
-  const { count } = await supabase
-    .from("operative_services")
-    .select("id", { count: "exact", head: true })
-    .eq("operative_id", operative.id);
+  const [{ data: services }, { data: personnel }] = await Promise.all([
+    supabase
+      .from("operative_services")
+      .select("id, service_id, contract_content, default_price_pence")
+      .eq("operative_id", operative.id),
+    supabase.from("operative_personnel").select("id, full_name, role, id_document_storage_path").eq("operative_id", operative.id),
+  ]);
 
-  const validationError = validateContractorOnboarding(operative, count ?? 0);
+  const validationError = validateContractorOnboarding(operative, services ?? [], personnel ?? []);
   if (validationError) {
     return NextResponse.json({ error: validationError }, { status: 400 });
+  }
+
+  if (!operative.contractor_terms_accepted_at) {
+    return NextResponse.json({ error: "Accept the contractor terms before submitting." }, { status: 400 });
   }
 
   const admin = createServiceRoleClient();
@@ -70,8 +73,7 @@ export async function POST() {
   if (updateErr && isMissingSubmittedForReviewColumn(updateErr.message)) {
     return NextResponse.json(
       {
-        error:
-          "Database is missing operatives.submitted_for_review_at. Run migration 036 in Supabase.",
+        error: "Database is missing operatives.submitted_for_review_at. Run migration 036 in Supabase.",
       },
       { status: 503 },
     );
