@@ -1,7 +1,7 @@
 /**
  * OAuth redirect for contractor join / sign-in (Google).
  * `intent=contractor` lets /auth/callback upgrade customer → operative.
- * Uses NEXT_PUBLIC_SITE_URL when set (Vercel: https://driver.kleenapp.co.uk) so Supabase
+ * Uses NEXT_PUBLIC_SITE_URL when set (Vercel: https://contractor.kleenapp.co.uk) so Supabase
  * always receives an allow-listed callback even if the browser host differs.
  */
 export function getContractorGoogleRedirectTo(): string {

@@ -9,6 +9,7 @@ import {
   FileText,
   Landmark,
   Briefcase,
+  CalendarDays,
   Scale,
   LogOut,
 } from "lucide-react";
@@ -30,6 +31,7 @@ const NAV_BASE = [
   { href: "/contractor/payouts", label: "Bank details", icon: Landmark },
 ];
 const NAV_VERIFIED = [
+  { href: "/contractor/schedule", label: "Schedule", icon: CalendarDays },
   { href: "/contractor/jobs", label: "Jobs & quotes", icon: Briefcase },
   { href: "/contractor/disputes", label: "Disputes", icon: Scale },
 ];
@@ -58,6 +60,7 @@ export default function ContractorSidebar() {
           <Image src="/images/kleen-logo.svg" alt="KLEEN" width={120} height={50} className="h-9 w-auto" />
         </Link>
         <p className="mt-2 text-xs font-semibold uppercase tracking-wider text-brand-700">Contractor portal</p>
+        <p className="mt-0.5 text-[10px] font-medium text-slate-400">contractor.kleenapp.co.uk</p>
         {rejectionMessage && (
           <p className="mt-2 rounded-lg bg-red-50 px-2 py-1.5 text-[11px] leading-snug text-red-900">
             Application needs changes — see the banner on Overview. Update your profile, then Kleen can review again.

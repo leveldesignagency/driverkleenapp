@@ -114,6 +114,6 @@ export async function POST(request: Request) {
     ok: true,
     quoteRequestId: qr.id,
     customerPricePence,
-    message: "Your quote was submitted. The customer and Kleen admin can review it.",
+    message: "Your quote was submitted. The customer can review it in their dashboard.",
   });
 }

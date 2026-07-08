@@ -2,10 +2,10 @@
 
 import { Suspense, useState } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import GoogleOAuthButton from "@/components/auth/GoogleOAuthButton";
+import ContractorPortalBrand from "@/components/contractor/ContractorPortalBrand";
 import { getContractorGoogleRedirectTo } from "@/lib/contractor-oauth";
 import { customerAppHref } from "@/lib/customer-app-url";
 
@@ -39,10 +39,8 @@ function JoinContent() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 px-6 py-16">
       <div className="w-full max-w-md">
-        <Link href="/contractor" className="mb-8 flex justify-center">
-          <Image src="/images/kleen-logo.svg" alt="KLEEN" width={160} height={66} className="h-12 w-auto" />
-        </Link>
-        <h1 className="text-center text-2xl font-bold text-slate-900">Become a Kleen contractor</h1>
+        <ContractorPortalBrand />
+        <h1 className="mt-6 text-center text-2xl font-bold text-slate-900">Become a Kleen contractor</h1>
         {needOperative && (
           <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-center text-sm text-amber-950">
             This Google account is still a <strong>customer</strong> account. Tap <strong>Continue with Google</strong>{" "}

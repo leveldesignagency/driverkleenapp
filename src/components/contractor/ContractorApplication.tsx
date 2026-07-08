@@ -242,7 +242,8 @@ export default function ContractorApplication({ operativeId, rejectionMessage, o
       <header className="shrink-0 border-b border-slate-200 bg-white">
         <div className="mx-auto w-full max-w-6xl px-5 py-5 sm:px-8">
           <p className="text-xs font-semibold uppercase tracking-wide text-brand-600">Kleen contractor application</p>
-          <h1 className="mt-1 text-xl font-bold text-slate-900 sm:text-2xl">Apply to work with Kleen</h1>
+          <p className="mt-0.5 text-[11px] font-medium text-slate-400">contractor.kleenapp.co.uk</p>
+          <h1 className="mt-2 text-xl font-bold text-slate-900 sm:text-2xl">Apply to work with Kleen</h1>
           <p className="mt-1 text-sm text-slate-600">
             Complete every section below. Kleen will review your application before you can access jobs.
           </p>

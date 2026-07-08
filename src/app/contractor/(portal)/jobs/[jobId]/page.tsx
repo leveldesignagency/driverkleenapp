@@ -85,6 +85,14 @@ export default function ContractorJobLayoutPage() {
   const [customerComment, setCustomerComment] = useState("");
   const [savingCustomerRating, setSavingCustomerRating] = useState(false);
   const [hasCustomerRating, setHasCustomerRating] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelPreview, setCancelPreview] = useState<{
+    penaltyPence: number;
+    isLateCancel: boolean;
+    hoursUntilStart: number | null;
+  } | null>(null);
+  const [cancelLoading, setCancelLoading] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
   const reportByStage = useMemo(
     () => ({
@@ -94,6 +102,12 @@ export default function ContractorJobLayoutPage() {
     }),
     [reports]
   );
+
+  const liveStatuses = ["customer_accepted", "accepted", "awaiting_completion", "in_progress", "pending_confirmation"];
+  const showLive =
+    job && liveStatuses.includes(job.status) && !job.operative_marked_complete_at && !job.operative_marked_incomplete_at;
+  const showRateCustomer =
+    job && ["completed", "funds_released"].includes(job.status) && !hasCustomerRating;
 
   const load = useCallback(async () => {
     if (!jobId || !operativeId || !isVerified) return;
@@ -142,6 +156,22 @@ export default function ContractorJobLayoutPage() {
     setLoading(true);
     load();
   }, [load, isVerified]);
+
+  useEffect(() => {
+    if (!jobId || !showLive) return;
+    fetch(`/api/contractor/jobs/${jobId}/cancel`, { credentials: "include" })
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.penaltyPence != null) {
+          setCancelPreview({
+            penaltyPence: json.penaltyPence,
+            isLateCancel: json.isLateCancel,
+            hoursUntilStart: json.hoursUntilStart,
+          });
+        }
+      })
+      .catch(() => {});
+  }, [jobId, showLive]);
 
   const saveReport = async () => {
     if (!jobId || !operativeId) return;
@@ -265,11 +295,32 @@ export default function ContractorJobLayoutPage() {
     setHasCustomerRating(true);
   };
 
-  const liveStatuses = ["customer_accepted", "accepted", "awaiting_completion", "in_progress", "pending_confirmation"];
-  const showLive =
-    job && liveStatuses.includes(job.status) && !job.operative_marked_complete_at && !job.operative_marked_incomplete_at;
-  const showRateCustomer =
-    job && ["completed", "funds_released"].includes(job.status) && !hasCustomerRating;
+  const submitCancel = async (confirmLatePenalty = false) => {
+    if (!jobId || !cancelReason.trim()) return;
+    setCancelLoading(true);
+    const res = await fetch(`/api/contractor/jobs/${jobId}/cancel`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason: cancelReason.trim(), confirmLatePenalty }),
+    });
+    const json = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      requiresConfirmation?: boolean;
+      penaltyPence?: number;
+    };
+    setCancelLoading(false);
+
+    if (res.status === 409 && json.requiresConfirmation) {
+      setShowCancelConfirm(true);
+      return;
+    }
+    if (!res.ok) {
+      alert(json.error || "Could not cancel job");
+      return;
+    }
+    router.replace("/contractor/schedule");
+  };
 
   if (!isVerified || loading) {
     return (
@@ -334,6 +385,44 @@ export default function ContractorJobLayoutPage() {
               <li>Arrived: {new Date(job.operative_arrived_at).toLocaleString("en-GB")}</li>
             )}
           </ul>
+        </section>
+      )}
+
+      {showLive && (
+        <section className="rounded-2xl border border-red-200 bg-red-50/50 p-5 shadow-sm">
+          <h2 className="text-sm font-semibold text-red-900">Cancel this job</h2>
+          <p className="mt-1 text-xs text-red-800/90">
+            Only cancel if you cannot attend. Cancelling within 24 hours of the scheduled start incurs a £50 penalty
+            on your account.
+            {cancelPreview?.isLateCancel && (
+              <span className="mt-1 block font-semibold">
+                Late cancel — £{(cancelPreview.penaltyPence / 100).toFixed(2)} will be added to your penalty balance.
+              </span>
+            )}
+          </p>
+          <label className="mt-3 block text-xs text-red-900/80">
+            Reason (required)
+            <textarea
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              rows={3}
+              className="input-field mt-1"
+              placeholder="Explain why you need to cancel…"
+            />
+          </label>
+          {showCancelConfirm && cancelPreview?.isLateCancel && (
+            <p className="mt-2 rounded-lg bg-red-100 px-3 py-2 text-xs font-medium text-red-900">
+              Confirm you accept the £{(cancelPreview.penaltyPence / 100).toFixed(2)} late-cancel penalty.
+            </p>
+          )}
+          <button
+            type="button"
+            disabled={cancelLoading || cancelReason.trim().length < 10}
+            onClick={() => submitCancel(showCancelConfirm)}
+            className="mt-3 rounded-lg bg-red-700 px-3 py-2 text-xs font-semibold text-white hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {cancelLoading ? "Cancelling…" : showCancelConfirm ? "Confirm cancellation" : "Cancel job"}
+          </button>
         </section>
       )}
 
