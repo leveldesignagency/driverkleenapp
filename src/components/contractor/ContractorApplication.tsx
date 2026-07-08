@@ -654,23 +654,44 @@ export default function ContractorApplication({ operativeId, rejectionMessage, o
                 continueDisabled={linkedServices.length < 1}
               >
                 {linkedServices.length > 0 && (
-                  <ul className="space-y-3">
+                  <ul className="space-y-4">
                     {linkedServices.map((s) => {
                       const name = Array.isArray(s.services) ? s.services[0]?.name : s.services?.name;
                       return (
                         <li key={s.id} className="rounded-xl border border-slate-200 p-4 text-sm">
                           <p className="font-medium text-slate-900">{name || s.service_id}</p>
-                          <p className="mt-1 text-xs text-slate-500">
-                            £{formatPricePence(s.default_price_pence)} per completed job
-                          </p>
+                          <label className="mt-3 block">
+                            <span className="text-xs font-medium text-slate-500">Price per completed job (£, ex VAT)</span>
+                            <div className="relative mt-1">
+                              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">£</span>
+                              <input
+                                defaultValue={formatPricePence(s.default_price_pence)}
+                                onBlur={async (e) => {
+                                  const pence = parsePriceToPence(e.target.value);
+                                  if (!pence || !s.id) return;
+                                  const supabase = createClient();
+                                  const { error: upErr } = await supabase
+                                    .from("operative_services")
+                                    .update({ default_price_pence: pence })
+                                    .eq("id", s.id);
+                                  if (upErr) setError(upErr.message);
+                                  else
+                                    setLinkedServices((prev) =>
+                                      prev.map((row) => (row.id === s.id ? { ...row, default_price_pence: pence } : row)),
+                                    );
+                                }}
+                                className="w-full rounded-lg border border-slate-300 py-2 pl-7 pr-3 text-sm"
+                              />
+                            </div>
+                          </label>
                         </li>
                       );
                     })}
                   </ul>
                 )}
-                {availableServices.length > 0 && (
-                  <div className="mt-4 space-y-3 rounded-xl border border-dashed border-slate-300 bg-slate-50/50 p-4">
-                    <p className="text-sm font-medium text-slate-800">Add a service</p>
+                <div className="mt-4 space-y-3 rounded-xl border-2 border-brand-200 bg-brand-50/40 p-4">
+                  <p className="text-sm font-semibold text-slate-900">Add a service</p>
+                  <p className="text-xs text-slate-600">Each service needs a price per completed job and your contract terms.</p>
                     <CustomDropdown
                       value={addServiceId}
                       onChange={setAddServiceId}
@@ -680,7 +701,18 @@ export default function ContractorApplication({ operativeId, rejectionMessage, o
                       searchPlaceholder="Search services…"
                       emptyMessage="No services available"
                     />
-                    <Field label="Price per completed job (£, ex VAT)" value={addPrice} onChange={setAddPrice} placeholder="e.g. 150.00" />
+                    <label className="block">
+                      <span className="text-xs font-medium text-slate-500">Price per completed job (£, ex VAT) — required</span>
+                      <div className="relative mt-1">
+                        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">£</span>
+                        <input
+                          value={addPrice}
+                          onChange={(e) => setAddPrice(e.target.value)}
+                          className="w-full rounded-lg border border-slate-300 py-2.5 pl-7 pr-3 text-sm"
+                          placeholder="e.g. 150.00"
+                        />
+                      </div>
+                    </label>
                     <Field label="Contract title" value={addTitle} onChange={setAddTitle} />
                     <label className="block">
                       <span className="text-xs font-medium text-slate-500">Contract terms (full text)</span>
@@ -717,7 +749,11 @@ export default function ContractorApplication({ operativeId, rejectionMessage, o
                           .single();
                         setSaving(false);
                         if (insErr) {
-                          setError(insErr.message);
+                          setError(
+                            insErr.message.includes("default_price_pence") || insErr.message.includes("schema cache")
+                              ? `${insErr.message} — run Supabase migration 049 on production.`
+                              : insErr.message,
+                          );
                           return;
                         }
                         setLinkedServices([...linkedServices, data as OperativeServiceRow]);
@@ -730,8 +766,7 @@ export default function ContractorApplication({ operativeId, rejectionMessage, o
                     >
                       {saving ? "Adding…" : "Add service"}
                     </button>
-                  </div>
-                )}
+                </div>
               </StepSection>
             )}
 

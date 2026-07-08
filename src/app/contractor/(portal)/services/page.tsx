@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useContractorPortal } from "@/components/contractor/contractor-portal-context";
 import CustomDropdown from "@/components/ui/CustomDropdown";
 import { EXPECTED_CATALOG_SIZE, getStaticServiceCatalog, mergeServiceCatalog } from "@/lib/service-catalog";
+import { formatPricePence, parsePriceToPence } from "@/lib/contractor-onboarding";
 import { Loader2, Trash2 } from "lucide-react";
 
 type ServiceRow = { id: string; name: string };
@@ -14,6 +15,7 @@ type OsRow = {
   contract_title: string | null;
   contract_content: string | null;
   contract_content_preview: string | null;
+  default_price_pence: number | null;
   services?: { name: string } | { name: string }[] | null;
 };
 
@@ -31,6 +33,7 @@ export default function ContractorServicesPage() {
   const [addTitle, setAddTitle] = useState("");
   const [addFull, setAddFull] = useState("");
   const [addPreview, setAddPreview] = useState("");
+  const [addPrice, setAddPrice] = useState("");
   const [addSearchQuery, setAddSearchQuery] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -41,7 +44,7 @@ export default function ContractorServicesPage() {
       fetch("/api/contractor/services/catalog", { credentials: "include" }),
       supabase
         .from("operative_services")
-        .select("id, service_id, contract_title, contract_content, contract_content_preview, services(name)")
+        .select("id, service_id, contract_title, contract_content, contract_content_preview, default_price_pence, services(name)")
         .eq("operative_id", operativeId),
     ]);
 
@@ -101,6 +104,11 @@ export default function ContractorServicesPage() {
   const addService = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!operativeId || !addServiceId || !addFull.trim()) return;
+    const pricePence = parsePriceToPence(addPrice);
+    if (!pricePence || pricePence <= 0) {
+      alert("Enter your price per completed job (£, ex VAT).");
+      return;
+    }
     setSaving(true);
 
     await fetch("/api/contractor/services/catalog", { credentials: "include" }).catch(() => null);
@@ -112,14 +120,17 @@ export default function ContractorServicesPage() {
       contract_title: addTitle.trim() || null,
       contract_content: addFull.trim(),
       contract_content_preview: addPreview.trim() || null,
+      default_price_pence: pricePence,
       is_active: true,
     });
     setSaving(false);
     if (error) {
       alert(
-        error.message.includes("foreign key") || error.message.includes("services")
-          ? `${error.message}\n\nThe service catalogue may still be syncing — try again in a moment.`
-          : error.message,
+        error.message.includes("default_price_pence") || error.message.includes("schema cache")
+          ? `${error.message}\n\nRun Supabase migration 049 (contractor application onboarding) on production.`
+          : error.message.includes("foreign key") || error.message.includes("services")
+            ? `${error.message}\n\nThe service catalogue may still be syncing — try again in a moment.`
+            : error.message,
       );
       return;
     }
@@ -127,20 +138,27 @@ export default function ContractorServicesPage() {
     setAddTitle("");
     setAddFull("");
     setAddPreview("");
+    setAddPrice("");
     load();
   };
 
   const updateRow = async (
     id: string,
-    patch: { contract_title?: string | null; contract_content?: string | null; contract_content_preview?: string | null },
+    patch: {
+      contract_title?: string | null;
+      contract_content?: string | null;
+      contract_content_preview?: string | null;
+      default_price_pence?: number | null;
+    },
   ) => {
     const supabase = createClient();
     const { error } = await supabase
       .from("operative_services")
       .update({
-        contract_title: patch.contract_title ?? null,
-        contract_content: patch.contract_content ?? null,
-        contract_content_preview: patch.contract_content_preview?.trim() || null,
+        contract_title: patch.contract_title ?? undefined,
+        contract_content: patch.contract_content ?? undefined,
+        contract_content_preview: patch.contract_content_preview?.trim() || undefined,
+        default_price_pence: patch.default_price_pence ?? undefined,
       })
       .eq("id", id);
     if (error) alert(error.message);
@@ -168,8 +186,8 @@ export default function ContractorServicesPage() {
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Services &amp; contracts</h1>
         <p className="mt-1 text-sm text-slate-600">
-          Link Kleen catalogue services to your long-form contract text. Customers see Kleen&apos;s short agreement plus
-          an optional preview; the full text is emailed after they pay.
+          Link Kleen services to your contract text and set your <strong>price per completed job</strong> for each one
+          (ex VAT). Customers see a range derived from verified contractors.
         </p>
       </div>
 
@@ -195,6 +213,24 @@ export default function ContractorServicesPage() {
                     <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
+                <label className="mt-3 block text-xs">
+                  <span className="text-slate-500">Price per completed job (£, ex VAT)</span>
+                  <div className="relative mt-1">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">£</span>
+                    <input
+                      key={`price-${r.id}-${r.default_price_pence}`}
+                      defaultValue={formatPricePence(r.default_price_pence)}
+                      onBlur={(e) => {
+                        const pence = parsePriceToPence(e.target.value);
+                        if (pence && pence !== r.default_price_pence) {
+                          updateRow(r.id, { default_price_pence: pence });
+                        }
+                      }}
+                      className="w-full rounded-lg border border-slate-300 py-2 pl-7 pr-3 text-sm"
+                      placeholder="150.00"
+                    />
+                  </div>
+                </label>
                 <label className="mt-3 block text-xs">
                   <span className="text-slate-500">Contract title</span>
                   <input
@@ -266,6 +302,20 @@ export default function ContractorServicesPage() {
                 emptyMessage={dropdownEmptyMessage}
                 onSearchQueryChange={setAddSearchQuery}
               />
+            </label>
+            <label className="block text-xs">
+              <span className="text-slate-500">Price per completed job (£, ex VAT) — required</span>
+              <div className="relative mt-1">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">£</span>
+                <input
+                  value={addPrice}
+                  onChange={(e) => setAddPrice(e.target.value)}
+                  required
+                  className="w-full rounded-lg border border-slate-300 py-2 pl-7 pr-3 text-sm"
+                  placeholder="e.g. 150.00"
+                />
+              </div>
+              <p className="mt-1 text-[11px] text-slate-400">Your standard charge when you complete this type of job.</p>
             </label>
             <label className="block text-xs">
               <span className="text-slate-500">Contract title</span>
