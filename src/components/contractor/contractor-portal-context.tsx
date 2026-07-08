@@ -10,7 +10,9 @@ export type ContractorPortalValue = {
   /** Application was declined — message is shown in portal and was emailed. */
   rejectedAt: string | null;
   rejectionMessage: string | null;
+  submittedForReviewAt: string | null;
   refresh: () => Promise<void>;
+  reopenOnboarding: () => void;
 };
 
 export const ContractorPortalContext = createContext<ContractorPortalValue>({
@@ -19,7 +21,9 @@ export const ContractorPortalContext = createContext<ContractorPortalValue>({
   isVerified: false,
   rejectedAt: null,
   rejectionMessage: null,
+  submittedForReviewAt: null,
   refresh: async () => {},
+  reopenOnboarding: () => {},
 });
 
 export function useContractorPortal() {

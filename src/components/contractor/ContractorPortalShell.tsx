@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import ContractorSidebar from "@/components/contractor/ContractorSidebar";
+import OnboardingModal from "@/components/contractor/OnboardingModal";
 import { ContractorPortalContext } from "@/components/contractor/contractor-portal-context";
 import ToastContainer from "@/components/ui/Toast";
 import { Loader2 } from "lucide-react";
@@ -14,6 +15,8 @@ export default function ContractorPortalShell({ children }: { children: React.Re
   const [isVerified, setIsVerified] = useState(false);
   const [rejectedAt, setRejectedAt] = useState<string | null>(null);
   const [rejectionMessage, setRejectionMessage] = useState<string | null>(null);
+  const [submittedForReviewAt, setSubmittedForReviewAt] = useState<string | null>(null);
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deactivated, setDeactivated] = useState(false);
@@ -102,6 +105,13 @@ export default function ContractorPortalShell({ children }: { children: React.Re
     setIsVerified(!!row.is_verified);
     setRejectedAt(row.rejected_at ? String(row.rejected_at) : null);
     setRejectionMessage(row.rejection_message ? String(row.rejection_message) : null);
+    const submitted = row.submitted_for_review_at ? String(row.submitted_for_review_at) : null;
+    setSubmittedForReviewAt(submitted);
+    if (!row.is_verified) {
+      setOnboardingOpen(!submitted || !!row.rejection_message);
+    } else {
+      setOnboardingOpen(false);
+    }
     setLoading(false);
   }, [router]);
 
@@ -172,7 +182,9 @@ export default function ContractorPortalShell({ children }: { children: React.Re
         isVerified,
         rejectedAt,
         rejectionMessage,
+        submittedForReviewAt,
         refresh: bootstrap,
+        reopenOnboarding: () => setOnboardingOpen(true),
       }}
     >
       <div className="flex h-screen bg-gradient-to-br from-slate-100 via-slate-50 to-brand-50/30">
@@ -182,6 +194,14 @@ export default function ContractorPortalShell({ children }: { children: React.Re
         </main>
         <ToastContainer />
       </div>
+      {!isVerified && onboardingOpen && (
+        <OnboardingModal
+          operativeId={operativeId}
+          rejectionMessage={rejectionMessage}
+          onComplete={() => setOnboardingOpen(false)}
+          onRefresh={bootstrap}
+        />
+      )}
     </ContractorPortalContext.Provider>
   );
 }
