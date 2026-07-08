@@ -6,7 +6,7 @@ import { useContractorPortal } from "@/components/contractor/contractor-portal-c
 import CustomDropdown from "@/components/ui/CustomDropdown";
 import { EXPECTED_CATALOG_SIZE, getStaticServiceCatalog, mergeServiceCatalog } from "@/lib/service-catalog";
 import { formatPricePence, parsePriceToPence } from "@/lib/contractor-onboarding";
-import { Loader2, Trash2 } from "lucide-react";
+import { Loader2, Pencil, Trash2 } from "lucide-react";
 
 type ServiceRow = { id: string; name: string };
 type OsRow = {
@@ -23,6 +23,161 @@ function matchServiceQuery(name: string, query: string) {
   return name.toLowerCase().includes(query.trim().toLowerCase());
 }
 
+type ServiceDraft = {
+  price: string;
+  contractTitle: string;
+  contractContent: string;
+  contractPreview: string;
+};
+
+function ServiceListItem({
+  row,
+  saving,
+  onSave,
+  onDelete,
+}: {
+  row: OsRow;
+  saving: boolean;
+  onSave: (id: string, draft: ServiceDraft) => Promise<boolean>;
+  onDelete: (id: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<ServiceDraft>(() => ({
+    price: formatPricePence(row.default_price_pence),
+    contractTitle: row.contract_title || "",
+    contractContent: row.contract_content || "",
+    contractPreview: row.contract_content_preview || "",
+  }));
+
+  const serviceName = Array.isArray(row.services) ? row.services[0]?.name : row.services?.name;
+  const priceLabel =
+    row.default_price_pence && row.default_price_pence > 0
+      ? `£${formatPricePence(row.default_price_pence)} per job`
+      : "No price set";
+
+  const openEdit = () => {
+    setDraft({
+      price: formatPricePence(row.default_price_pence),
+      contractTitle: row.contract_title || "",
+      contractContent: row.contract_content || "",
+      contractPreview: row.contract_content_preview || "",
+    });
+    setEditing(true);
+  };
+
+  const cancelEdit = () => {
+    setEditing(false);
+    setDraft({
+      price: formatPricePence(row.default_price_pence),
+      contractTitle: row.contract_title || "",
+      contractContent: row.contract_content || "",
+      contractPreview: row.contract_content_preview || "",
+    });
+  };
+
+  const handleSave = async () => {
+    const ok = await onSave(row.id, draft);
+    if (ok) setEditing(false);
+  };
+
+  if (!editing) {
+    return (
+      <li className="rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="font-medium text-slate-900">{serviceName || row.service_id}</p>
+            <p className="mt-0.5 text-sm text-slate-600">{priceLabel}</p>
+            {row.contract_title && (
+              <p className="mt-1 truncate text-xs text-slate-500">{row.contract_title}</p>
+            )}
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={openEdit}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+              Edit
+            </button>
+            <button
+              type="button"
+              onClick={() => onDelete(row.id)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Delete
+            </button>
+          </div>
+        </div>
+      </li>
+    );
+  }
+
+  return (
+    <li className="rounded-xl border border-brand-200 bg-white p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <p className="font-medium text-slate-900">{serviceName || row.service_id}</p>
+        <button
+          type="button"
+          onClick={cancelEdit}
+          className="text-xs font-medium text-slate-500 hover:text-slate-700"
+        >
+          Cancel
+        </button>
+      </div>
+      <div className="mt-4 space-y-3">
+        <label className="block text-xs">
+          <span className="text-slate-500">Price per completed job (£, ex VAT)</span>
+          <div className="relative mt-1">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">£</span>
+            <input
+              value={draft.price}
+              onChange={(e) => setDraft((d) => ({ ...d, price: e.target.value }))}
+              className="w-full rounded-lg border border-slate-300 py-2 pl-7 pr-3 text-sm"
+              placeholder="150.00"
+            />
+          </div>
+        </label>
+        <label className="block text-xs">
+          <span className="text-slate-500">Contract title</span>
+          <input
+            value={draft.contractTitle}
+            onChange={(e) => setDraft((d) => ({ ...d, contractTitle: e.target.value }))}
+            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          />
+        </label>
+        <label className="block text-xs">
+          <span className="text-slate-500">Full contract (emailed after customer pays)</span>
+          <textarea
+            value={draft.contractContent}
+            onChange={(e) => setDraft((d) => ({ ...d, contractContent: e.target.value }))}
+            rows={5}
+            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono"
+          />
+        </label>
+        <label className="block text-xs">
+          <span className="text-slate-500">Short preview / addendum (optional)</span>
+          <textarea
+            value={draft.contractPreview}
+            onChange={(e) => setDraft((d) => ({ ...d, contractPreview: e.target.value }))}
+            rows={2}
+            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          />
+        </label>
+        <button
+          type="button"
+          disabled={saving}
+          onClick={handleSave}
+          className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-500 disabled:opacity-50"
+        >
+          {saving ? "Saving…" : "Save changes"}
+        </button>
+      </div>
+    </li>
+  );
+}
+
 export default function ContractorServicesPage() {
   const { operativeId } = useContractorPortal();
   const [catalog, setCatalog] = useState<ServiceRow[]>(getStaticServiceCatalog());
@@ -36,6 +191,7 @@ export default function ContractorServicesPage() {
   const [addPrice, setAddPrice] = useState("");
   const [addSearchQuery, setAddSearchQuery] = useState("");
   const [saving, setSaving] = useState(false);
+  const [savingRowId, setSavingRowId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!operativeId) return;
@@ -161,8 +317,33 @@ export default function ContractorServicesPage() {
         default_price_pence: patch.default_price_pence ?? undefined,
       })
       .eq("id", id);
-    if (error) alert(error.message);
-    else load();
+    if (error) {
+      alert(error.message);
+      return false;
+    }
+    await load();
+    return true;
+  };
+
+  const saveRow = async (id: string, draft: ServiceDraft): Promise<boolean> => {
+    const pricePence = parsePriceToPence(draft.price);
+    if (!pricePence || pricePence <= 0) {
+      alert("Enter a valid price per completed job (£, ex VAT).");
+      return false;
+    }
+    if (!draft.contractContent.trim()) {
+      alert("Contract text is required.");
+      return false;
+    }
+    setSavingRowId(id);
+    const ok = await updateRow(id, {
+      default_price_pence: pricePence,
+      contract_title: draft.contractTitle.trim() || null,
+      contract_content: draft.contractContent.trim(),
+      contract_content_preview: draft.contractPreview.trim() || null,
+    });
+    setSavingRowId(null);
+    return ok;
   };
 
   const removeRow = async (id: string) => {
@@ -197,82 +378,16 @@ export default function ContractorServicesPage() {
 
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="text-sm font-semibold text-slate-900">Your services</h2>
-        <ul className="mt-4 space-y-6">
-          {rows.map((r) => {
-            const sn = Array.isArray(r.services) ? r.services[0]?.name : r.services?.name;
-            return (
-              <li key={r.id} className="border-b border-slate-100 pb-6 last:border-0 last:pb-0">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="font-medium text-slate-900">{sn || r.service_id}</p>
-                  <button
-                    type="button"
-                    onClick={() => removeRow(r.id)}
-                    className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600"
-                    title="Remove"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-                <label className="mt-3 block text-xs">
-                  <span className="text-slate-500">Price per completed job (£, ex VAT)</span>
-                  <div className="relative mt-1">
-                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">£</span>
-                    <input
-                      key={`price-${r.id}-${r.default_price_pence}`}
-                      defaultValue={formatPricePence(r.default_price_pence)}
-                      onBlur={(e) => {
-                        const pence = parsePriceToPence(e.target.value);
-                        if (pence && pence !== r.default_price_pence) {
-                          updateRow(r.id, { default_price_pence: pence });
-                        }
-                      }}
-                      className="w-full rounded-lg border border-slate-300 py-2 pl-7 pr-3 text-sm"
-                      placeholder="150.00"
-                    />
-                  </div>
-                </label>
-                <label className="mt-3 block text-xs">
-                  <span className="text-slate-500">Contract title</span>
-                  <input
-                    defaultValue={r.contract_title || ""}
-                    onBlur={(e) => {
-                      if (e.target.value !== (r.contract_title || "")) {
-                        updateRow(r.id, { contract_title: e.target.value });
-                      }
-                    }}
-                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                  />
-                </label>
-                <label className="mt-3 block text-xs">
-                  <span className="text-slate-500">Full contract (emailed after customer pays)</span>
-                  <textarea
-                    defaultValue={r.contract_content || ""}
-                    rows={5}
-                    onBlur={(e) => {
-                      if (e.target.value !== (r.contract_content || "")) {
-                        updateRow(r.id, { contract_content: e.target.value });
-                      }
-                    }}
-                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono"
-                  />
-                </label>
-                <label className="mt-3 block text-xs">
-                  <span className="text-slate-500">Short preview / addendum (optional)</span>
-                  <textarea
-                    defaultValue={r.contract_content_preview || ""}
-                    rows={2}
-                    onBlur={(e) => {
-                      const v = e.target.value;
-                      if (v !== (r.contract_content_preview || "")) {
-                        updateRow(r.id, { contract_content_preview: v });
-                      }
-                    }}
-                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                  />
-                </label>
-              </li>
-            );
-          })}
+        <ul className="mt-4 space-y-3">
+          {rows.map((r) => (
+            <ServiceListItem
+              key={r.id}
+              row={r}
+              saving={savingRowId === r.id}
+              onSave={saveRow}
+              onDelete={removeRow}
+            />
+          ))}
           {rows.length === 0 && <li className="text-sm text-slate-500">No services yet — add one below.</li>}
         </ul>
       </section>
