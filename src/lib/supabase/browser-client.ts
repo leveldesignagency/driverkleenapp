@@ -17,6 +17,8 @@ export function getBrowserSupabaseClient(): SupabaseClient {
       auth: {
         // Server routes + middleware refresh cookies; client refresh loops cause 429 storms on stale tokens.
         autoRefreshToken: false,
+        // PKCE exchange runs in /auth/callback (route handler), not in the browser.
+        detectSessionInUrl: false,
       },
     },
   );

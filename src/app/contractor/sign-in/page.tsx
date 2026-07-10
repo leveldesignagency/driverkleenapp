@@ -3,10 +3,9 @@
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import GoogleOAuthButton from "@/components/auth/GoogleOAuthButton";
 import ContractorPortalBrand from "@/components/contractor/ContractorPortalBrand";
-import { getContractorGoogleRedirectTo } from "@/lib/contractor-oauth";
+import { CONTRACTOR_GOOGLE_OAUTH_PATH } from "@/lib/contractor-oauth";
 import { customerAppHref } from "@/lib/customer-app-url";
 import { clearContractorAuthCookies } from "@/lib/contractor-session-bootstrap";
 
@@ -29,25 +28,10 @@ function SignInContent() {
         ? "Sign-in could not be completed. Try again."
         : null;
 
-  const handleGoogle = async () => {
+  const handleGoogle = () => {
     setError("");
     setOauthLoading(true);
-    const supabase = createClient();
-    const origin = typeof window !== "undefined" ? window.location.origin : "";
-    if (!origin || origin.includes("localhost")) {
-      setError("Google sign-in needs a public URL. Deploy this app or use a tunnel with that URL in Supabase redirect allow-list.");
-      setOauthLoading(false);
-      return;
-    }
-    const redirectTo = getContractorGoogleRedirectTo();
-    const { error: err } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo },
-    });
-    if (err) {
-      setError(err.message);
-      setOauthLoading(false);
-    }
+    window.location.href = CONTRACTOR_GOOGLE_OAUTH_PATH;
   };
 
   return (

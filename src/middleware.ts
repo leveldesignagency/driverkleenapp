@@ -5,7 +5,11 @@ import { CANONICAL_CONTRACTOR_HOST, LEGACY_CONTRACTOR_HOSTS } from "@/lib/contra
 export async function middleware(request: NextRequest) {
   const host = request.headers.get("host")?.split(":")[0]?.toLowerCase();
 
-  if (host && (LEGACY_CONTRACTOR_HOSTS as readonly string[]).includes(host)) {
+  if (
+    host &&
+    (LEGACY_CONTRACTOR_HOSTS as readonly string[]).includes(host) &&
+    !request.nextUrl.pathname.startsWith("/auth/callback")
+  ) {
     const url = request.nextUrl.clone();
     url.hostname = CANONICAL_CONTRACTOR_HOST;
     url.protocol = "https";

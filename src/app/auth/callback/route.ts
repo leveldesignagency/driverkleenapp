@@ -1,6 +1,5 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { contractorOAuthCallbackOrigin } from "@/lib/contractor-portal-origin";
 import { upgradeCustomerToOperative } from "@/lib/contractor-role-upgrade";
 import { getSupabaseAuthCookieOptions } from "@/lib/supabase/auth-cookie-options";
 
@@ -15,10 +14,9 @@ export async function GET(request: NextRequest) {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
   const next = url.searchParams.get("next") ?? "/contractor";
-  const intent = url.searchParams.get("intent");
+  const intent = url.searchParams.get("intent") ?? "contractor";
 
-  const requestHost = url.hostname.toLowerCase();
-  const portalOrigin = contractorOAuthCallbackOrigin(requestHost);
+  const portalOrigin = url.origin;
 
   if (!code) {
     return NextResponse.redirect(new URL("/contractor/sign-in", portalOrigin));

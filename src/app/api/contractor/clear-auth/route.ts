@@ -1,21 +1,42 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getSupabaseAuthCookieOptions } from "@/lib/supabase/auth-cookie-options";
+import {
+  getSupabaseAuthCookieOptions,
+  isContractorAuthCookieName,
+} from "@/lib/supabase/auth-cookie-options";
 
-/** Expire Supabase auth cookies without calling the refresh endpoint (stops client refresh loops). */
+function expireCookie(
+  response: NextResponse,
+  name: string,
+  opts: { path: string; sameSite?: "lax" | "strict" | "none"; secure?: boolean; domain?: string },
+) {
+  const base = {
+    path: opts.path,
+    maxAge: 0,
+    ...(opts.sameSite ? { sameSite: opts.sameSite } : {}),
+    ...(opts.secure ? { secure: opts.secure } : {}),
+  };
+
+  response.cookies.set(name, "", base);
+
+  if (opts.domain) {
+    response.cookies.set(name, "", { ...base, domain: opts.domain });
+  }
+}
+
+/** Expire contractor Supabase auth cookies without calling the refresh endpoint. */
 export async function POST(request: NextRequest) {
   const response = NextResponse.json({ ok: true });
   const shared = getSupabaseAuthCookieOptions();
+  const legacyDomain = process.env.NEXT_PUBLIC_AUTH_COOKIE_DOMAIN?.trim();
 
   for (const cookie of request.cookies.getAll()) {
-    const name = cookie.name;
-    if (!name.startsWith("sb-") && !name.includes("auth-token")) continue;
+    if (!isContractorAuthCookieName(cookie.name)) continue;
 
-    response.cookies.set(name, "", {
-      path: shared?.path ?? "/",
-      maxAge: 0,
-      ...(shared?.domain ? { domain: shared.domain } : {}),
-      ...(shared?.sameSite ? { sameSite: shared.sameSite } : {}),
-      ...(shared?.secure ? { secure: shared.secure } : {}),
+    expireCookie(response, cookie.name, {
+      path: shared.path ?? "/",
+      sameSite: shared.sameSite === true ? "lax" : shared.sameSite || undefined,
+      secure: shared.secure === true ? true : undefined,
+      ...(legacyDomain ? { domain: legacyDomain } : {}),
     });
   }
 
