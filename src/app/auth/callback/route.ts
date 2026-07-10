@@ -1,8 +1,8 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { contractorOAuthCallbackOrigin } from "@/lib/contractor-portal-origin";
+import { upgradeCustomerToOperative } from "@/lib/contractor-role-upgrade";
 import { getSupabaseAuthCookieOptions } from "@/lib/supabase/auth-cookie-options";
-import { createServiceRoleClient } from "@/lib/supabase/service-role";
 
 /**
  * OAuth PKCE exchange — must use getAll/setAll so cookies attach to the redirect response.
@@ -56,17 +56,14 @@ export async function GET(request: NextRequest) {
   }
 
   const userId = exchanged?.session?.user?.id;
-  /** Google OAuth from this app always sends `intent=contractor`. Upgrade customer → operative so
-   * existing customer accounts (not just brand-new signups) can use the driver portal onboarding. */
   if (intent === "contractor" && userId) {
-    try {
-      const admin = createServiceRoleClient();
-      const { data: prof } = await admin.from("profiles").select("role").eq("id", userId).maybeSingle();
-      if (prof?.role === "customer") {
-        await admin.from("profiles").update({ role: "operative" }).eq("id", userId).eq("role", "customer");
-      }
-    } catch (e) {
-      console.error("auth callback intent=contractor:", e);
+    const upgraded = await upgradeCustomerToOperative(userId);
+    if (!upgraded.ok) {
+      console.error("auth callback intent=contractor:", upgraded.error);
+      const fail = new URL("/contractor/join", portalOrigin);
+      fail.searchParams.set("need_operative", "1");
+      fail.searchParams.set("error", "role_upgrade");
+      return NextResponse.redirect(fail);
     }
   }
 

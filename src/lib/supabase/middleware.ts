@@ -35,6 +35,7 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const isPublicContractorPath =
+    pathname === "/contractor" ||
     pathname === "/contractor/sign-in" ||
     pathname === "/contractor/join" ||
     pathname.startsWith("/auth/callback");

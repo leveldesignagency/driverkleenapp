@@ -51,12 +51,33 @@ export default function ContractorPortalShell({ children }: { children: React.Re
 
     if (profile.role !== "operative") {
       if (profile.role === "customer") {
-        router.replace("/contractor/join?need_operative=1");
+        const res = await fetch("/api/contractor/ensure-operative-role", {
+          method: "POST",
+          credentials: "include",
+        });
+        if (res.ok) {
+          const { data: upgraded } = await supabase
+            .from("profiles")
+            .select("role, full_name, email")
+            .eq("id", user.id)
+            .single();
+          if (upgraded?.role === "operative") {
+            Object.assign(profile, upgraded);
+          } else {
+            router.replace("/contractor/join?need_operative=1&error=role_upgrade");
+            setLoading(false);
+            return;
+          }
+        } else {
+          router.replace("/contractor/join?need_operative=1&error=role_upgrade");
+          setLoading(false);
+          return;
+        }
       } else {
         router.replace("/contractor/sign-in?error=not_contractor");
+        setLoading(false);
+        return;
       }
-      setLoading(false);
-      return;
     }
 
     let { data: op } = await supabase.from("operatives").select("*").eq("user_id", user.id).maybeSingle();

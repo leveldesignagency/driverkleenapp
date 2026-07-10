@@ -10,8 +10,9 @@ Set these on the **kleen-contractor** Vercel project (contractor.kleenapp.co.uk)
 | `NEXT_PUBLIC_CUSTOMER_APP_URL` | `https://dashboard.kleenapp.co.uk` |
 | `NEXT_PUBLIC_MARKETING_URL` | `https://www.kleenapp.co.uk` |
 | `NEXT_PUBLIC_AUTH_COOKIE_DOMAIN` | `.kleenapp.co.uk` (same value on kleen-app + kleen-admin) |
+| **`SUPABASE_SERVICE_ROLE_KEY`** | **Required** — promotes Google sign-ups from customer → contractor after login |
 
-**Do not** leave `NEXT_PUBLIC_SITE_URL` as `https://driver.kleenapp.co.uk` or `https://dashboard.kleenapp.co.uk` — Google OAuth will send users to the wrong host and they will land on the marketing/customer site without a contractor session.
+Without **`SUPABASE_SERVICE_ROLE_KEY`**, Google sign-in succeeds but users loop back to the join page (403 / role upgrade failure).
 
 ## Supabase (Authentication → URL configuration)
 
