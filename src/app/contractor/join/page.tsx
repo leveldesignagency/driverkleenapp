@@ -9,7 +9,11 @@ import GoogleOAuthButton from "@/components/auth/GoogleOAuthButton";
 import ContractorPortalBrand from "@/components/contractor/ContractorPortalBrand";
 import { getContractorGoogleRedirectTo } from "@/lib/contractor-oauth";
 import { customerAppHref } from "@/lib/customer-app-url";
-import { isBenignAuthError } from "@/lib/auth-errors";
+import { isBenignAuthError, isStaleRefreshTokenError } from "@/lib/auth-errors";
+import {
+  clearContractorAuthCookies,
+  fetchContractorSessionDiag,
+} from "@/lib/contractor-session-bootstrap";
 
 async function tryEnsureOperativeRole(): Promise<
   { ok: true } | { ok: false; error: string; code?: string }
@@ -38,12 +42,9 @@ function JoinContent() {
 
   useEffect(() => {
     let cancelled = false;
-    const supabase = createClient();
 
-    async function finishSignedIn(userId: string) {
-      const { data: profile } = await supabase.from("profiles").select("role").eq("id", userId).maybeSingle();
-
-      if (profile?.role === "operative") {
+    async function finishSignedIn(userId: string, profileRole: string | null) {
+      if (profileRole === "operative") {
         router.replace("/contractor");
         return;
       }
@@ -61,49 +62,49 @@ function JoinContent() {
     }
 
     async function bootstrap() {
-      // Returning from Google OAuth — session should exist; use getSession (local cookies, no 403).
-      if (returningFromAuth) {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        const user = session?.user ?? null;
+      // Failed OAuth return — drop corrupt cookies before any client auth calls.
+      if (returningFromAuth && errorQ) {
+        await clearContractorAuthCookies();
+      }
 
-        if (!user) {
-          if (!cancelled) {
-            if (errorQ === "auth" && authMsg) {
-              setError(
-                authMsg.toLowerCase().includes("redirect")
-                  ? `OAuth redirect blocked: add https://contractor.kleenapp.co.uk/** in Supabase → Authentication → URL configuration. (${authMsg})`
-                  : `Google sign-in failed: ${authMsg}`,
-              );
-            } else if (errorQ === "role_upgrade") {
-              setError(
-                errorCode === "admin_account"
-                  ? "This Google account is an admin account. Use a different Google account to apply as a contractor."
-                  : "Google signed you in but the session did not stick. Clear cookies for kleenapp.co.uk, try Incognito, and confirm Vercel env keys match Supabase.",
-              );
-            } else {
-              setError(
-                "Google sign-in did not complete. Clear site cookies for kleenapp.co.uk and try again in an Incognito window.",
-              );
-            }
-            setBootstrapping(false);
-          }
-          return;
-        }
+      const diag = await fetchContractorSessionDiag();
+      const userId = diag.session?.signedIn ? diag.session.userId : null;
 
-        await finishSignedIn(user.id);
+      if (diag.session?.authError && isStaleRefreshTokenError(diag.session.authError)) {
+        await clearContractorAuthCookies();
+      }
+
+      if (userId) {
+        await finishSignedIn(userId, diag.profile?.role ?? null);
         return;
       }
 
-      // Fresh visitor — only redirect if already signed in; never show an error.
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (session?.user) {
-        setBootstrapping(true);
-        await finishSignedIn(session.user.id);
+      if (returningFromAuth) {
+        if (!cancelled) {
+          if (errorQ === "auth" && authMsg) {
+            setError(
+              authMsg.toLowerCase().includes("redirect")
+                ? `OAuth redirect blocked: add https://contractor.kleenapp.co.uk/** in Supabase → Authentication → URL configuration. (${authMsg})`
+                : `Google sign-in failed: ${authMsg}`,
+            );
+          } else if (errorQ === "role_upgrade") {
+            setError(
+              errorCode === "admin_account"
+                ? "This Google account is an admin account. Use a different Google account to apply as a contractor."
+                : "Google signed you in but the session did not stick. Clear cookies for kleenapp.co.uk, try Incognito, and confirm Vercel env keys match Supabase.",
+            );
+          } else {
+            setError(
+              "Google sign-in did not complete. Clear site cookies for kleenapp.co.uk and try again in an Incognito window.",
+            );
+          }
+          setBootstrapping(false);
+        }
+        return;
       }
+
+      // Fresh visitor — no session is normal; show the Google button.
+      if (!cancelled) setBootstrapping(false);
     }
 
     bootstrap();

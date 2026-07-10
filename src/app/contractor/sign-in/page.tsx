@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -8,12 +8,19 @@ import GoogleOAuthButton from "@/components/auth/GoogleOAuthButton";
 import ContractorPortalBrand from "@/components/contractor/ContractorPortalBrand";
 import { getContractorGoogleRedirectTo } from "@/lib/contractor-oauth";
 import { customerAppHref } from "@/lib/customer-app-url";
+import { clearContractorAuthCookies } from "@/lib/contractor-session-bootstrap";
 
 function SignInContent() {
   const search = useSearchParams();
   const errQ = search.get("error");
   const [oauthLoading, setOauthLoading] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (errQ === "auth" || errQ === "not_contractor") {
+      void clearContractorAuthCookies();
+    }
+  }, [errQ]);
 
   const preMessage =
     errQ === "not_contractor"

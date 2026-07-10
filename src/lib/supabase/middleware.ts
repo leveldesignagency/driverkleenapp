@@ -2,10 +2,24 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { getSupabaseAuthCookieOptions } from "@/lib/supabase/auth-cookie-options";
 
+function isPublicContractorPath(pathname: string): boolean {
+  return (
+    pathname === "/contractor" ||
+    pathname === "/contractor/sign-in" ||
+    pathname === "/contractor/join" ||
+    pathname.startsWith("/auth/callback")
+  );
+}
+
 export async function updateSession(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
   const response = NextResponse.next({ request: { headers: request.headers } });
+
+  // Public auth pages + API routes: never call getUser here (stale cookies → refresh storms).
+  if (isPublicContractorPath(pathname) || pathname.startsWith("/api/")) {
+    return response;
+  }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -34,15 +48,9 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const isPublicContractorPath =
-    pathname === "/contractor" ||
-    pathname === "/contractor/sign-in" ||
-    pathname === "/contractor/join" ||
-    pathname.startsWith("/auth/callback");
-
   const isContractorPortalPath = pathname === "/contractor" || pathname.startsWith("/contractor/");
 
-  if (isContractorPortalPath && !isPublicContractorPath && !user) {
+  if (isContractorPortalPath && !user) {
     const signIn = new URL("/contractor/sign-in", request.url);
     signIn.searchParams.set("next", `${pathname}${request.nextUrl.search || ""}`);
     return NextResponse.redirect(signIn);

@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { isBenignAuthError } from "@/lib/auth-errors";
+import { isBenignAuthError, isStaleRefreshTokenError } from "@/lib/auth-errors";
 import { upgradeCustomerToOperative } from "@/lib/contractor-role-upgrade";
 import { createRouteHandlerSupabaseClient } from "@/lib/supabase/server";
 
@@ -66,7 +66,10 @@ export async function GET(request: NextRequest) {
       userId: user?.id ?? null,
       email: user?.email ?? null,
       authError:
-        authError && !isBenignAuthError(authError.message) ? authError.message : null,
+        authError?.message &&
+        (!isBenignAuthError(authError.message) || isStaleRefreshTokenError(authError.message))
+          ? authError.message
+          : null,
     },
     profile: {
       role: profileRole,
