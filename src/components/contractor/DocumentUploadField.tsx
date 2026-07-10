@@ -10,6 +10,7 @@ type Props = {
   uploadKind: "operative_id" | "personnel_id";
   personnelId?: string;
   onUploaded: (path: string) => void;
+  onRemove?: () => void;
 };
 
 export default function DocumentUploadField({
@@ -19,6 +20,7 @@ export default function DocumentUploadField({
   uploadKind,
   personnelId,
   onUploaded,
+  onRemove,
 }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
@@ -58,10 +60,21 @@ export default function DocumentUploadField({
       <p className="text-sm font-medium text-slate-900">{label}</p>
       {hint && <p className="mt-1 text-xs text-slate-500">{hint}</p>}
       {currentPath && (
-        <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-emerald-700">
-          <CheckCircle2 className="h-4 w-4" />
-          Document uploaded
-        </p>
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          <p className="flex items-center gap-1.5 text-xs font-medium text-emerald-700">
+            <CheckCircle2 className="h-4 w-4" />
+            Document uploaded
+          </p>
+          {onRemove && (
+            <button
+              type="button"
+              onClick={onRemove}
+              className="text-xs font-medium text-red-600 hover:text-red-700"
+            >
+              Remove
+            </button>
+          )}
+        </div>
       )}
       {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
       <div className="mt-3 flex flex-wrap gap-2">

@@ -4,9 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import CustomDropdown from "@/components/ui/CustomDropdown";
 import DocumentUploadField from "@/components/contractor/DocumentUploadField";
+import WizardServiceListItem from "@/components/contractor/WizardServiceListItem";
 import { mergeServiceCatalog } from "@/lib/service-catalog";
 import {
-  formatPricePence,
   getContractorOnboardingSteps,
   isContractorOnboardingComplete,
   joinFullName,
@@ -25,6 +25,10 @@ import {
   ChevronRight,
   ChevronLeft,
   Trash2,
+  Pencil,
+  Plus,
+  MapPin,
+  X,
 } from "lucide-react";
 
 const SORT_CODE_LENGTH = 6;
@@ -77,6 +81,10 @@ export default function ContractorApplication({ operativeId, rejectionMessage, o
   const [addTitle, setAddTitle] = useState("");
   const [addFull, setAddFull] = useState("");
   const [addPrice, setAddPrice] = useState("");
+  const [savingServiceId, setSavingServiceId] = useState<string | null>(null);
+  const [editingAreaIdx, setEditingAreaIdx] = useState<number | null>(null);
+  const [areaEditValue, setAreaEditValue] = useState("");
+  const [editingPersonnelIdx, setEditingPersonnelIdx] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -206,6 +214,79 @@ export default function ContractorApplication({ operativeId, rejectionMessage, o
     setAreaInput("");
   };
 
+  const saveServiceRow = async (
+    id: string,
+    draft: { price: string; contractTitle: string; contractContent: string },
+  ): Promise<boolean> => {
+    const pricePence = parsePriceToPence(draft.price);
+    if (!pricePence || pricePence <= 0) {
+      setError("Enter a valid price per completed job (£, ex VAT).");
+      return false;
+    }
+    if (!draft.contractContent.trim()) {
+      setError("Contract text is required.");
+      return false;
+    }
+    setSavingServiceId(id);
+    setError(null);
+    const supabase = createClient();
+    const { error: upErr } = await supabase
+      .from("operative_services")
+      .update({
+        default_price_pence: pricePence,
+        contract_title: draft.contractTitle.trim() || null,
+        contract_content: draft.contractContent.trim(),
+      })
+      .eq("id", id);
+    setSavingServiceId(null);
+    if (upErr) {
+      setError(upErr.message);
+      return false;
+    }
+    setLinkedServices((prev) =>
+      prev.map((row) =>
+        row.id === id
+          ? {
+              ...row,
+              default_price_pence: pricePence,
+              contract_title: draft.contractTitle.trim() || null,
+              contract_content: draft.contractContent.trim(),
+            }
+          : row,
+      ),
+    );
+    return true;
+  };
+
+  const deleteServiceRow = async (id: string) => {
+    if (!confirm("Remove this service from your application?")) return;
+    setError(null);
+    const supabase = createClient();
+    const { error: delErr } = await supabase.from("operative_services").delete().eq("id", id);
+    if (delErr) {
+      setError(delErr.message);
+      return;
+    }
+    setLinkedServices((prev) => prev.filter((row) => row.id !== id));
+  };
+
+  const saveAreaEdit = (idx: number) => {
+    const v = areaEditValue.trim();
+    if (!v) {
+      setEditingAreaIdx(null);
+      return;
+    }
+    const next = [...serviceAreas];
+    if (next.some((a, i) => i !== idx && a.toLowerCase() === v.toLowerCase())) {
+      setError("That area is already listed.");
+      return;
+    }
+    next[idx] = v;
+    setServiceAreas(next);
+    setEditingAreaIdx(null);
+    setError(null);
+  };
+
   const handleSubmitForReview = async () => {
     if (!termsAccepted) {
       setError("Accept the Kleen contractor terms to submit your application.");
@@ -238,45 +319,67 @@ export default function ContractorApplication({ operativeId, rejectionMessage, o
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-slate-50">
-      <header className="shrink-0 border-b border-slate-200 bg-white">
-        <div className="mx-auto w-full max-w-6xl px-5 py-5 sm:px-8">
-          <p className="text-xs font-semibold uppercase tracking-wide text-brand-600">Kleen contractor application</p>
+    <div className="flex min-h-screen flex-col bg-gradient-to-b from-slate-100 via-slate-50 to-white">
+      <header className="shrink-0 border-b border-slate-200/80 bg-white/90 backdrop-blur-sm">
+        <div className="mx-auto w-full max-w-7xl px-6 py-6 sm:px-10 lg:px-12">
+          <p className="text-xs font-semibold uppercase tracking-widest text-brand-600">Kleen contractor application</p>
           <p className="mt-0.5 text-[11px] font-medium text-slate-400">contractor.kleenapp.co.uk</p>
-          <h1 className="mt-2 text-xl font-bold text-slate-900 sm:text-2xl">Apply to work with Kleen</h1>
-          <p className="mt-1 text-sm text-slate-600">
+          <h1 className="mt-3 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">Apply to work with Kleen</h1>
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600 sm:text-base">
             Complete every section below. Kleen will review your application before you can access jobs.
           </p>
         </div>
       </header>
 
-      <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-5 px-5 py-5 sm:px-8 sm:py-6 lg:flex-row lg:gap-8">
-        <aside className="shrink-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:w-72 lg:self-start lg:p-5">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Application steps</p>
-          <ul className="mt-3 space-y-1.5">
-            {steps.map((step) => (
-              <li key={step.id}>
-                <button
-                  type="button"
-                  onClick={() => setActiveStep(step.id)}
-                  className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm transition-colors ${
-                    activeStep === step.id ? "bg-brand-50 font-medium text-brand-900" : "text-slate-600 hover:bg-slate-50"
-                  }`}
-                >
-                  {step.done && step.id !== "review" ? (
-                    <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
-                  ) : (
-                    <Circle className="h-4 w-4 shrink-0 text-slate-300" />
-                  )}
-                  {step.label}
-                </button>
-              </li>
-            ))}
-          </ul>
+      <div className="mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col gap-6 px-6 py-6 sm:px-10 sm:py-8 lg:flex-row lg:gap-10 lg:px-12">
+        <aside className="shrink-0 lg:w-80 lg:self-start">
+          <div className="sticky top-6 rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm lg:p-6">
+            <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Application steps</p>
+            <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-slate-100">
+              <div
+                className="h-full rounded-full bg-brand-500 transition-all duration-300"
+                style={{
+                  width: `${Math.round((steps.filter((s) => s.done && s.id !== "review").length / (steps.length - 1)) * 100)}%`,
+                }}
+              />
+            </div>
+            <ul className="mt-5 space-y-1">
+              {steps.map((step, i) => (
+                <li key={step.id}>
+                  <button
+                    type="button"
+                    onClick={() => setActiveStep(step.id)}
+                    className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition-all ${
+                      activeStep === step.id
+                        ? "bg-brand-50 font-semibold text-brand-900 shadow-sm ring-1 ring-brand-200/60"
+                        : "text-slate-600 hover:bg-slate-50"
+                    }`}
+                  >
+                    <span
+                      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+                        step.done && step.id !== "review"
+                          ? "bg-emerald-100 text-emerald-700"
+                          : activeStep === step.id
+                            ? "bg-brand-600 text-white"
+                            : "bg-slate-100 text-slate-500"
+                      }`}
+                    >
+                      {step.done && step.id !== "review" ? (
+                        <CheckCircle2 className="h-4 w-4" />
+                      ) : (
+                        i + 1
+                      )}
+                    </span>
+                    {step.label}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
         </aside>
 
-        <main className="min-h-0 min-w-0 flex-1">
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6 lg:p-8">
+        <main className="min-h-0 min-w-0 flex-1 pb-8">
+          <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm sm:p-8 lg:p-10">
             {rejectionMessage && (
               <div className="mb-6 flex gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
                 <ShieldAlert className="h-5 w-5 shrink-0" />
@@ -316,22 +419,22 @@ export default function ContractorApplication({ operativeId, rejectionMessage, o
                 }}
                 saving={saving}
               >
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-5 sm:grid-cols-2">
                   <Field label="First name" value={firstName} onChange={setFirstName} />
                   <Field label="Last name" value={lastName} onChange={setLastName} />
                 </div>
                 <div>
-                  <span className="text-xs font-medium text-slate-500">How do you trade?</span>
-                  <div className="mt-2 flex flex-wrap gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">How do you trade?</span>
+                  <div className="mt-3 flex flex-wrap gap-3">
                     {(["sole_trader", "business"] as const).map((t) => (
                       <button
                         key={t}
                         type="button"
                         onClick={() => setContractorType(t)}
-                        className={`rounded-xl border px-4 py-2 text-sm font-medium ${
+                        className={`rounded-xl border px-5 py-3 text-sm font-medium transition ${
                           contractorType === t
-                            ? "border-brand-500 bg-brand-50 text-brand-800"
-                            : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                            ? "border-brand-500 bg-brand-50 text-brand-800 shadow-sm ring-1 ring-brand-200"
+                            : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
                         }`}
                       >
                         {t === "sole_trader" ? "Sole trader" : "Limited company"}
@@ -383,10 +486,12 @@ export default function ContractorApplication({ operativeId, rejectionMessage, o
                 }}
                 saving={saving}
               >
-                <Field label="Company name" value={companyName} onChange={setCompanyName} placeholder="Registered or trading name" />
-                <Field label="Trading name (if different)" value={tradingName} onChange={setTradingName} />
+                <div className="grid gap-5 lg:grid-cols-2">
+                  <Field label="Company name" value={companyName} onChange={setCompanyName} placeholder="Registered or trading name" />
+                  <Field label="Trading name (if different)" value={tradingName} onChange={setTradingName} />
+                </div>
                 {contractorType === "business" ? (
-                  <>
+                  <div className="grid gap-5 lg:grid-cols-2">
                     <Field
                       label="Companies House number"
                       value={companyNumber}
@@ -394,7 +499,7 @@ export default function ContractorApplication({ operativeId, rejectionMessage, o
                       placeholder="8 characters"
                     />
                     <Field label="VAT number (if registered)" value={vatNumber} onChange={setVatNumber} placeholder="Optional" />
-                  </>
+                  </div>
                 ) : (
                   <Field
                     label="UTR — Unique Taxpayer Reference (10 digits)"
@@ -434,12 +539,12 @@ export default function ContractorApplication({ operativeId, rejectionMessage, o
               >
                 <Field label="UK phone number" value={phone} onChange={setPhone} placeholder="e.g. 07700 900123" />
                 <label className="block">
-                  <span className="text-xs font-medium text-slate-500">Business address</span>
+                  <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Business address</span>
                   <textarea
                     value={registeredAddress}
                     onChange={(e) => setRegisteredAddress(e.target.value)}
                     rows={4}
-                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm"
+                    className="mt-1.5 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm shadow-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
                   />
                 </label>
               </StepSection>
@@ -514,64 +619,118 @@ export default function ContractorApplication({ operativeId, rejectionMessage, o
               >
                 {contractorType === "business" ? (
                   <div className="space-y-4">
-                    {personnel.map((p, i) => (
-                      <div key={i} className="rounded-xl border border-slate-200 p-4">
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="text-sm font-medium text-slate-800">Person {i + 1}</p>
-                          {personnel.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => setPersonnel(personnel.filter((_, j) => j !== i))}
-                              className="text-slate-400 hover:text-red-600"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
+                    {personnel.map((p, i) => {
+                      const isEditing = editingPersonnelIdx === i;
+                      return (
+                        <div
+                          key={p.id || `new-${i}`}
+                          className={`rounded-xl border p-5 transition ${
+                            isEditing ? "border-brand-200 bg-white shadow-sm" : "border-slate-200 bg-slate-50/50"
+                          }`}
+                        >
+                          {!isEditing ? (
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="min-w-0">
+                                <p className="text-base font-semibold text-slate-900">
+                                  {p.full_name.trim() || `Person ${i + 1}`}
+                                </p>
+                                <p className="mt-1 text-sm text-slate-600">{p.role || "Director"}</p>
+                                {p.id_document_storage_path && (
+                                  <p className="mt-2 text-xs font-medium text-emerald-700">Photo ID uploaded</p>
+                                )}
+                              </div>
+                              <div className="flex shrink-0 items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingPersonnelIdx(i)}
+                                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                  Edit
+                                </button>
+                                {personnel.length > 1 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setPersonnel(personnel.filter((_, j) => j !== i));
+                                      if (editingPersonnelIdx === i) setEditingPersonnelIdx(null);
+                                    }}
+                                    className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-medium text-red-600 shadow-sm hover:bg-red-50"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                    Delete
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-sm font-semibold text-slate-800">Edit person {i + 1}</p>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingPersonnelIdx(null)}
+                                  className="text-xs font-medium text-slate-500 hover:text-slate-700"
+                                >
+                                  Done
+                                </button>
+                              </div>
+                              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                                <Field
+                                  label="Full name"
+                                  value={p.full_name}
+                                  onChange={(v) => {
+                                    const next = [...personnel];
+                                    next[i] = { ...next[i], full_name: v };
+                                    setPersonnel(next);
+                                  }}
+                                />
+                                <Field
+                                  label="Role"
+                                  value={p.role}
+                                  onChange={(v) => {
+                                    const next = [...personnel];
+                                    next[i] = { ...next[i], role: v };
+                                    setPersonnel(next);
+                                  }}
+                                  placeholder="e.g. Director"
+                                />
+                              </div>
+                              {p.id && (
+                                <div className="mt-4">
+                                  <DocumentUploadField
+                                    label="Photo ID (optional)"
+                                    uploadKind="personnel_id"
+                                    personnelId={p.id}
+                                    currentPath={p.id_document_storage_path}
+                                    onUploaded={(path) => {
+                                      const next = [...personnel];
+                                      next[i] = { ...next[i], id_document_storage_path: path };
+                                      setPersonnel(next);
+                                    }}
+                                    onRemove={() => {
+                                      const next = [...personnel];
+                                      next[i] = { ...next[i], id_document_storage_path: null };
+                                      setPersonnel(next);
+                                    }}
+                                  />
+                                </div>
+                              )}
+                            </>
                           )}
                         </div>
-                        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                          <Field
-                            label="Full name"
-                            value={p.full_name}
-                            onChange={(v) => {
-                              const next = [...personnel];
-                              next[i] = { ...next[i], full_name: v };
-                              setPersonnel(next);
-                            }}
-                          />
-                          <Field
-                            label="Role"
-                            value={p.role}
-                            onChange={(v) => {
-                              const next = [...personnel];
-                              next[i] = { ...next[i], role: v };
-                              setPersonnel(next);
-                            }}
-                            placeholder="e.g. Director"
-                          />
-                        </div>
-                        {p.id && (
-                          <div className="mt-3">
-                            <DocumentUploadField
-                              label="Photo ID (optional)"
-                              uploadKind="personnel_id"
-                              personnelId={p.id}
-                              currentPath={p.id_document_storage_path}
-                              onUploaded={(path) => {
-                                const next = [...personnel];
-                                next[i] = { ...next[i], id_document_storage_path: path };
-                                setPersonnel(next);
-                              }}
-                            />
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                      );
+                    })}
                     <button
                       type="button"
-                      onClick={() => setPersonnel([...personnel, { full_name: "", role: "director" }])}
-                      className="text-sm font-medium text-brand-600 hover:underline"
+                      onClick={() => {
+                        setPersonnel([...personnel, { full_name: "", role: "director" }]);
+                        setEditingPersonnelIdx(personnel.length);
+                      }}
+                      className="inline-flex items-center gap-2 rounded-xl border border-dashed border-slate-300 px-4 py-3 text-sm font-medium text-brand-600 hover:border-brand-300 hover:bg-brand-50/50"
                     >
-                      + Add another person
+                      <Plus className="h-4 w-4" />
+                      Add another person
                     </button>
                   </div>
                 ) : (
@@ -581,6 +740,7 @@ export default function ContractorApplication({ operativeId, rejectionMessage, o
                     uploadKind="operative_id"
                     currentPath={idDocumentPath}
                     onUploaded={setIdDocumentPath}
+                    onRemove={() => setIdDocumentPath(null)}
                   />
                 )}
               </StepSection>
@@ -609,25 +769,72 @@ export default function ContractorApplication({ operativeId, rejectionMessage, o
                 }}
                 saving={saving}
               >
-                <div className="flex flex-wrap gap-2">
-                  {serviceAreas.map((a) => (
-                    <span key={a} className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-xs">
-                      {a}
-                      <button type="button" onClick={() => setServiceAreas(serviceAreas.filter((x) => x !== a))}>
-                        ×
-                      </button>
-                    </span>
-                  ))}
-                </div>
-                <div className="flex gap-2">
+                {serviceAreas.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {serviceAreas.map((a, i) =>
+                      editingAreaIdx === i ? (
+                        <div key={a} className="flex items-center gap-1 rounded-full border border-brand-300 bg-white pl-3 pr-1 shadow-sm">
+                          <MapPin className="h-3.5 w-3.5 text-brand-600" />
+                          <input
+                            autoFocus
+                            value={areaEditValue}
+                            onChange={(e) => setAreaEditValue(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                saveAreaEdit(i);
+                              }
+                              if (e.key === "Escape") setEditingAreaIdx(null);
+                            }}
+                            onBlur={() => saveAreaEdit(i)}
+                            className="w-36 border-0 bg-transparent py-1.5 text-sm focus:outline-none focus:ring-0"
+                          />
+                        </div>
+                      ) : (
+                        <span
+                          key={`${a}-${i}`}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm"
+                        >
+                          <MapPin className="h-3.5 w-3.5 text-slate-400" />
+                          {a}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingAreaIdx(i);
+                              setAreaEditValue(a);
+                            }}
+                            className="rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-brand-600"
+                            aria-label={`Edit ${a}`}
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setServiceAreas(serviceAreas.filter((_, j) => j !== i))}
+                            className="rounded p-0.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                            aria-label={`Remove ${a}`}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </span>
+                      ),
+                    )}
+                  </div>
+                )}
+                <div className="flex gap-3">
                   <input
                     value={areaInput}
                     onChange={(e) => setAreaInput(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addArea())}
-                    className="flex-1 rounded-lg border border-slate-300 px-3 py-2.5 text-sm"
-                    placeholder="e.g. London, Surrey"
+                    className="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                    placeholder="e.g. London, Surrey, Kent"
                   />
-                  <button type="button" onClick={addArea} className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium">
+                  <button
+                    type="button"
+                    onClick={addArea}
+                    className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800"
+                  >
+                    <Plus className="h-4 w-4" />
                     Add
                   </button>
                 </div>
@@ -655,44 +862,32 @@ export default function ContractorApplication({ operativeId, rejectionMessage, o
                 continueDisabled={linkedServices.length < 1}
               >
                 {linkedServices.length > 0 && (
-                  <ul className="space-y-4">
-                    {linkedServices.map((s) => {
-                      const name = Array.isArray(s.services) ? s.services[0]?.name : s.services?.name;
-                      return (
-                        <li key={s.id} className="rounded-xl border border-slate-200 p-4 text-sm">
-                          <p className="font-medium text-slate-900">{name || s.service_id}</p>
-                          <label className="mt-3 block">
-                            <span className="text-xs font-medium text-slate-500">Price per completed job (£, ex VAT)</span>
-                            <div className="relative mt-1">
-                              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">£</span>
-                              <input
-                                defaultValue={formatPricePence(s.default_price_pence)}
-                                onBlur={async (e) => {
-                                  const pence = parsePriceToPence(e.target.value);
-                                  if (!pence || !s.id) return;
-                                  const supabase = createClient();
-                                  const { error: upErr } = await supabase
-                                    .from("operative_services")
-                                    .update({ default_price_pence: pence })
-                                    .eq("id", s.id);
-                                  if (upErr) setError(upErr.message);
-                                  else
-                                    setLinkedServices((prev) =>
-                                      prev.map((row) => (row.id === s.id ? { ...row, default_price_pence: pence } : row)),
-                                    );
-                                }}
-                                className="w-full rounded-lg border border-slate-300 py-2 pl-7 pr-3 text-sm"
-                              />
-                            </div>
-                          </label>
-                        </li>
-                      );
-                    })}
-                  </ul>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Your services ({linkedServices.length})
+                    </p>
+                    <ul className="mt-4 space-y-3">
+                      {linkedServices.map((s) => (
+                        <WizardServiceListItem
+                          key={s.id}
+                          row={s}
+                          saving={savingServiceId === s.id}
+                          onSave={saveServiceRow}
+                          onDelete={deleteServiceRow}
+                        />
+                      ))}
+                    </ul>
+                  </div>
                 )}
-                <div className="mt-4 space-y-3 rounded-xl border-2 border-brand-200 bg-brand-50/40 p-4">
-                  <p className="text-sm font-semibold text-slate-900">Add a service</p>
-                  <p className="text-xs text-slate-600">Each service needs a price per completed job and your contract terms.</p>
+                <div className="mt-6 space-y-4 rounded-2xl border-2 border-dashed border-brand-200 bg-gradient-to-br from-brand-50/80 to-white p-6">
+                  <div>
+                    <p className="text-base font-semibold text-slate-900">Add a service</p>
+                    <p className="mt-1 text-sm text-slate-600">
+                      Each service needs a price per completed job and your contract terms.
+                    </p>
+                  </div>
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <div className="lg:col-span-2">
                     <CustomDropdown
                       value={addServiceId}
                       onChange={setAddServiceId}
@@ -702,28 +897,30 @@ export default function ContractorApplication({ operativeId, rejectionMessage, o
                       searchPlaceholder="Search services…"
                       emptyMessage="No services available"
                     />
+                    </div>
                     <label className="block">
-                      <span className="text-xs font-medium text-slate-500">Price per completed job (£, ex VAT) — required</span>
-                      <div className="relative mt-1">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Price per job (£, ex VAT)</span>
+                      <div className="relative mt-1.5">
                         <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">£</span>
                         <input
                           value={addPrice}
                           onChange={(e) => setAddPrice(e.target.value)}
-                          className="w-full rounded-lg border border-slate-300 py-2.5 pl-7 pr-3 text-sm"
+                          className="w-full rounded-xl border border-slate-200 py-3 pl-7 pr-3 text-sm shadow-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
                           placeholder="e.g. 150.00"
                         />
                       </div>
                     </label>
                     <Field label="Contract title" value={addTitle} onChange={setAddTitle} />
-                    <label className="block">
-                      <span className="text-xs font-medium text-slate-500">Contract terms (full text)</span>
+                    <label className="block lg:col-span-2">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Contract terms (full text)</span>
                       <textarea
                         value={addFull}
                         onChange={(e) => setAddFull(e.target.value)}
-                        rows={4}
-                        className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                        rows={5}
+                        className="mt-1.5 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm shadow-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
                       />
                     </label>
+                  </div>
                     <button
                       type="button"
                       disabled={saving}
@@ -763,8 +960,9 @@ export default function ContractorApplication({ operativeId, rejectionMessage, o
                         setAddFull("");
                         setAddPrice("");
                       }}
-                      className="rounded-xl bg-slate-800 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-50"
+                      className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
                     >
+                      <Plus className="h-4 w-4" />
                       {saving ? "Adding…" : "Add service"}
                     </button>
                 </div>
@@ -801,7 +999,7 @@ export default function ContractorApplication({ operativeId, rejectionMessage, o
                 saving={saving}
               >
                 <Field label="Account holder name" value={bankAccountName} onChange={setBankAccountName} />
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-5 sm:grid-cols-2">
                   <Field
                     label="Sort code"
                     value={formatSortCode(bankSortCode)}
@@ -818,27 +1016,35 @@ export default function ContractorApplication({ operativeId, rejectionMessage, o
 
             {activeStep === "review" && (
               <StepSection title="Submit application" description="Review your checklist and send to Kleen for approval." onBack={() => setActiveStep("bank")}>
-                <ul className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <ul className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50/80">
                   {steps
                     .filter((s) => s.id !== "review")
                     .map((step) => (
-                      <li key={step.id} className="flex items-center gap-2 text-sm">
-                        {step.done ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <Circle className="h-4 w-4 text-slate-300" />}
+                      <li key={step.id} className="flex items-center gap-3 px-5 py-4 text-sm">
+                        {step.done ? (
+                          <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" />
+                        ) : (
+                          <Circle className="h-5 w-5 shrink-0 text-slate-300" />
+                        )}
                         <span className={step.done ? "text-slate-600" : "font-medium text-slate-900"}>{step.label}</span>
                         {!step.done && (
-                          <button type="button" onClick={() => setActiveStep(step.id)} className="ml-auto text-xs font-medium text-brand-600 hover:underline">
+                          <button
+                            type="button"
+                            onClick={() => setActiveStep(step.id)}
+                            className="ml-auto rounded-lg px-3 py-1 text-xs font-semibold text-brand-600 hover:bg-brand-50"
+                          >
                             Complete
                           </button>
                         )}
                       </li>
                     ))}
                 </ul>
-                <label className="mt-4 flex items-start gap-2 text-sm text-slate-700">
+                <label className="mt-6 flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
                   <input
                     type="checkbox"
                     checked={termsAccepted}
                     onChange={(e) => setTermsAccepted(e.target.checked)}
-                    className="mt-1 rounded border-slate-300"
+                    className="mt-0.5 rounded border-slate-300"
                   />
                   <span>
                     I confirm the information provided is accurate. I agree to Kleen&apos;s contractor terms and understand
@@ -850,12 +1056,14 @@ export default function ContractorApplication({ operativeId, rejectionMessage, o
                     type="button"
                     disabled={submittingReview || !termsAccepted}
                     onClick={handleSubmitForReview}
-                    className="mt-4 w-full rounded-xl bg-emerald-700 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-600 disabled:opacity-50"
+                    className="mt-6 w-full rounded-xl bg-emerald-700 px-4 py-4 text-sm font-semibold text-white shadow-sm hover:bg-emerald-600 disabled:opacity-50"
                   >
                     {submittingReview ? "Submitting…" : "Submit application for review"}
                   </button>
                 ) : (
-                  <p className="mt-4 text-sm text-amber-800">Complete every section before submitting.</p>
+                  <p className="mt-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    Complete every section before submitting.
+                  </p>
                 )}
               </StepSection>
             )}
@@ -879,12 +1087,12 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="text-xs font-medium text-slate-500">{label}</span>
+      <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</span>
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm"
+        className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm transition focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
       />
     </label>
   );
@@ -910,16 +1118,20 @@ function StepSection({
   continueLabel?: string;
 }) {
   return (
-    <section className="space-y-6">
-      <div>
-        <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
-        <p className="mt-1 text-sm text-slate-600">{description}</p>
+    <section className="space-y-8">
+      <div className="border-b border-slate-100 pb-6">
+        <h2 className="text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">{title}</h2>
+        <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600 sm:text-base">{description}</p>
       </div>
-      <div className="space-y-4">{children}</div>
+      <div className="space-y-5">{children}</div>
       {onContinue && (
-        <div className="flex items-center gap-3 pt-2">
+        <div className="flex items-center gap-3 border-t border-slate-100 pt-6">
           {onBack && (
-            <button type="button" onClick={onBack} className="flex items-center gap-1 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50">
+            <button
+              type="button"
+              onClick={onBack}
+              className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+            >
               <ChevronLeft className="h-4 w-4" />
               Back
             </button>
@@ -928,7 +1140,7 @@ function StepSection({
             type="button"
             disabled={saving || continueDisabled}
             onClick={onContinue}
-            className="ml-auto flex items-center gap-1 rounded-xl bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-500 disabled:opacity-50"
+            className="ml-auto flex items-center gap-1.5 rounded-xl bg-brand-600 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-brand-500 disabled:opacity-50"
           >
             {saving ? "Saving…" : continueLabel}
             {!saving && <ChevronRight className="h-4 w-4" />}
