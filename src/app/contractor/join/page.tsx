@@ -10,14 +10,33 @@ import ContractorPortalBrand from "@/components/contractor/ContractorPortalBrand
 import { getContractorGoogleRedirectTo } from "@/lib/contractor-oauth";
 import { customerAppHref } from "@/lib/customer-app-url";
 
-async function tryEnsureOperativeRole(): Promise<{ ok: true } | { ok: false; error: string }> {
+async function tryEnsureOperativeRole(): Promise<
+  { ok: true } | { ok: false; error: string; code?: string }
+> {
   const res = await fetch("/api/contractor/ensure-operative-role", {
     method: "POST",
     credentials: "include",
   });
+  const body = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
   if (res.ok) return { ok: true };
-  const body = (await res.json().catch(() => ({}))) as { error?: string };
-  return { ok: false, error: body.error || "Could not activate contractor access." };
+  return { ok: false, error: body.error || "Could not activate contractor access.", code: body.code };
+}
+
+async function fetchAuthDiagnostics(): Promise<string | null> {
+  const res = await fetch("/api/contractor/ensure-operative-role", { credentials: "include" });
+  const body = (await res.json().catch(() => null)) as {
+    env?: { hasAnonKey?: boolean; hasServiceRoleKey?: boolean };
+    session?: { authError?: string | null; signedIn?: boolean };
+    profile?: { error?: string | null; role?: string | null };
+  } | null;
+  if (!body) return null;
+  const parts: string[] = [];
+  if (body.session?.authError) parts.push(`Auth: ${body.session.authError}`);
+  if (body.profile?.error) parts.push(`Profile: ${body.profile.error}`);
+  if (body.env && !body.env.hasAnonKey) parts.push("Missing NEXT_PUBLIC_SUPABASE_ANON_KEY on Vercel.");
+  if (body.env && !body.env.hasServiceRoleKey) parts.push("Missing SUPABASE_SERVICE_ROLE_KEY on Vercel.");
+  if (parts.length) return parts.join(" ");
+  return null;
 }
 
 function JoinContent() {
@@ -25,6 +44,8 @@ function JoinContent() {
   const search = useSearchParams();
   const needOperative = search.get("need_operative") === "1";
   const errorQ = search.get("error");
+  const errorCode = search.get("code");
+  const authMsg = search.get("msg");
   const [oauthLoading, setOauthLoading] = useState(false);
   const [bootstrapping, setBootstrapping] = useState(true);
   const [error, setError] = useState("");
@@ -36,9 +57,45 @@ function JoinContent() {
       const supabase = createClient();
       const {
         data: { user },
+        error: authError,
       } = await supabase.auth.getUser();
 
+      if (authError) {
+        const diag = await fetchAuthDiagnostics();
+        if (!cancelled) {
+          setError(
+            authError.message.includes("403") || authError.message.toLowerCase().includes("jwt")
+              ? `Session rejected by Supabase (403). Re-copy NEXT_PUBLIC_SUPABASE_ANON_KEY from Supabase → Vercel (contractor project) and redeploy.${diag ? ` ${diag}` : ""}`
+              : `Sign-in error: ${authError.message}${diag ? ` ${diag}` : ""}`,
+          );
+          setBootstrapping(false);
+        }
+        return;
+      }
+
       if (!user) {
+        if (errorQ === "auth" && authMsg) {
+          if (!cancelled) {
+            setError(
+              authMsg.toLowerCase().includes("redirect")
+                ? `OAuth redirect blocked: add https://contractor.kleenapp.co.uk/** in Supabase → Authentication → URL configuration. (${authMsg})`
+                : `Google sign-in failed: ${authMsg}`,
+            );
+            setBootstrapping(false);
+          }
+          return;
+        }
+        if (errorQ === "role_upgrade") {
+          if (!cancelled) {
+            setError(
+              errorCode === "admin_account"
+                ? "This Google account is an admin account. Use a different Google account to apply as a contractor."
+                : "Google signed you in but contractor access could not be activated. Check Vercel env keys match Supabase and redeploy.",
+            );
+            setBootstrapping(false);
+          }
+          return;
+        }
         if (!cancelled) setBootstrapping(false);
         return;
       }
@@ -61,7 +118,8 @@ function JoinContent() {
           return;
         }
         if (!cancelled) {
-          setError(upgraded.error);
+          const diag = await fetchAuthDiagnostics();
+          setError([upgraded.error, diag].filter(Boolean).join(" "));
           setBootstrapping(false);
         }
         return;
@@ -74,7 +132,7 @@ function JoinContent() {
     return () => {
       cancelled = true;
     };
-  }, [errorQ, needOperative, router]);
+  }, [authMsg, errorCode, errorQ, needOperative, router]);
 
   const handleGoogle = async () => {
     setError("");

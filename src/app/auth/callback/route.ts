@@ -52,7 +52,10 @@ export async function GET(request: NextRequest) {
   const { data: exchanged, error } = await supabase.auth.exchangeCodeForSession(code);
   if (error) {
     console.error("auth callback exchangeCodeForSession:", error.message);
-    return NextResponse.redirect(new URL("/contractor/sign-in?error=auth", portalOrigin));
+    const fail = new URL("/contractor/join", portalOrigin);
+    fail.searchParams.set("error", "auth");
+    fail.searchParams.set("msg", error.message);
+    return NextResponse.redirect(fail);
   }
 
   const userId = exchanged?.session?.user?.id;
@@ -63,6 +66,7 @@ export async function GET(request: NextRequest) {
       const fail = new URL("/contractor/join", portalOrigin);
       fail.searchParams.set("need_operative", "1");
       fail.searchParams.set("error", "role_upgrade");
+      if (upgraded.code) fail.searchParams.set("code", upgraded.code);
       return NextResponse.redirect(fail);
     }
   }
