@@ -1,5 +1,6 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { contractorOAuthCallbackOrigin } from "@/lib/contractor-portal-origin";
 import { getSupabaseAuthCookieOptions } from "@/lib/supabase/auth-cookie-options";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 
@@ -16,15 +17,15 @@ export async function GET(request: NextRequest) {
   const next = url.searchParams.get("next") ?? "/contractor";
   const intent = url.searchParams.get("intent");
 
-  /** Keep post-login redirect on the same host that received the OAuth callback (session cookies are host-scoped). */
-  const sameOrigin = url.origin;
+  const requestHost = url.hostname.toLowerCase();
+  const portalOrigin = contractorOAuthCallbackOrigin(requestHost);
 
   if (!code) {
-    return NextResponse.redirect(new URL("/contractor/sign-in", sameOrigin));
+    return NextResponse.redirect(new URL("/contractor/sign-in", portalOrigin));
   }
 
   const nextPath = next.startsWith("/") ? next : `/${next}`;
-  const redirectTarget = new URL(nextPath, sameOrigin);
+  const redirectTarget = new URL(nextPath, portalOrigin);
 
   const response = NextResponse.redirect(redirectTarget);
 
@@ -51,7 +52,7 @@ export async function GET(request: NextRequest) {
   const { data: exchanged, error } = await supabase.auth.exchangeCodeForSession(code);
   if (error) {
     console.error("auth callback exchangeCodeForSession:", error.message);
-    return NextResponse.redirect(new URL("/contractor/sign-in?error=auth", sameOrigin));
+    return NextResponse.redirect(new URL("/contractor/sign-in?error=auth", portalOrigin));
   }
 
   const userId = exchanged?.session?.user?.id;
