@@ -9,6 +9,7 @@ import GoogleOAuthButton from "@/components/auth/GoogleOAuthButton";
 import ContractorPortalBrand from "@/components/contractor/ContractorPortalBrand";
 import { getContractorGoogleRedirectTo } from "@/lib/contractor-oauth";
 import { customerAppHref } from "@/lib/customer-app-url";
+import { isBenignAuthError } from "@/lib/auth-errors";
 
 async function tryEnsureOperativeRole(): Promise<
   { ok: true } | { ok: false; error: string; code?: string }
@@ -22,23 +23,6 @@ async function tryEnsureOperativeRole(): Promise<
   return { ok: false, error: body.error || "Could not activate contractor access.", code: body.code };
 }
 
-async function fetchAuthDiagnostics(): Promise<string | null> {
-  const res = await fetch("/api/contractor/ensure-operative-role", { credentials: "include" });
-  const body = (await res.json().catch(() => null)) as {
-    env?: { hasAnonKey?: boolean; hasServiceRoleKey?: boolean };
-    session?: { authError?: string | null; signedIn?: boolean };
-    profile?: { error?: string | null; role?: string | null };
-  } | null;
-  if (!body) return null;
-  const parts: string[] = [];
-  if (body.session?.authError) parts.push(`Auth: ${body.session.authError}`);
-  if (body.profile?.error) parts.push(`Profile: ${body.profile.error}`);
-  if (body.env && !body.env.hasAnonKey) parts.push("Missing NEXT_PUBLIC_SUPABASE_ANON_KEY on Vercel.");
-  if (body.env && !body.env.hasServiceRoleKey) parts.push("Missing SUPABASE_SERVICE_ROLE_KEY on Vercel.");
-  if (parts.length) return parts.join(" ");
-  return null;
-}
-
 function JoinContent() {
   const router = useRouter();
   const search = useSearchParams();
@@ -46,93 +30,87 @@ function JoinContent() {
   const errorQ = search.get("error");
   const errorCode = search.get("code");
   const authMsg = search.get("msg");
+  const returningFromAuth = Boolean(errorQ || needOperative);
+
   const [oauthLoading, setOauthLoading] = useState(false);
-  const [bootstrapping, setBootstrapping] = useState(true);
+  const [bootstrapping, setBootstrapping] = useState(returningFromAuth);
   const [error, setError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
+    const supabase = createClient();
 
-    async function bootstrap() {
-      const supabase = createClient();
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser();
-
-      if (authError) {
-        const diag = await fetchAuthDiagnostics();
-        if (!cancelled) {
-          setError(
-            authError.message.includes("403") || authError.message.toLowerCase().includes("jwt")
-              ? `Session rejected by Supabase (403). Re-copy NEXT_PUBLIC_SUPABASE_ANON_KEY from Supabase → Vercel (contractor project) and redeploy.${diag ? ` ${diag}` : ""}`
-              : `Sign-in error: ${authError.message}${diag ? ` ${diag}` : ""}`,
-          );
-          setBootstrapping(false);
-        }
-        return;
-      }
-
-      if (!user) {
-        if (errorQ === "auth" && authMsg) {
-          if (!cancelled) {
-            setError(
-              authMsg.toLowerCase().includes("redirect")
-                ? `OAuth redirect blocked: add https://contractor.kleenapp.co.uk/** in Supabase → Authentication → URL configuration. (${authMsg})`
-                : `Google sign-in failed: ${authMsg}`,
-            );
-            setBootstrapping(false);
-          }
-          return;
-        }
-        if (errorQ === "role_upgrade") {
-          if (!cancelled) {
-            setError(
-              errorCode === "admin_account"
-                ? "This Google account is an admin account. Use a different Google account to apply as a contractor."
-                : "Google signed you in but contractor access could not be activated. Check Vercel env keys match Supabase and redeploy.",
-            );
-            setBootstrapping(false);
-          }
-          return;
-        }
-        if (!cancelled) setBootstrapping(false);
-        return;
-      }
-
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .maybeSingle();
+    async function finishSignedIn(userId: string) {
+      const { data: profile } = await supabase.from("profiles").select("role").eq("id", userId).maybeSingle();
 
       if (profile?.role === "operative") {
         router.replace("/contractor");
         return;
       }
 
-      if (profile?.role === "customer" || needOperative || errorQ === "role_upgrade") {
-        const upgraded = await tryEnsureOperativeRole();
-        if (upgraded.ok) {
-          router.replace("/contractor");
-          return;
-        }
-        if (!cancelled) {
-          const diag = await fetchAuthDiagnostics();
-          setError([upgraded.error, diag].filter(Boolean).join(" "));
-          setBootstrapping(false);
-        }
+      const upgraded = await tryEnsureOperativeRole();
+      if (upgraded.ok) {
+        router.replace("/contractor");
         return;
       }
 
-      if (!cancelled) setBootstrapping(false);
+      if (!cancelled) {
+        setError(upgraded.error);
+        setBootstrapping(false);
+      }
+    }
+
+    async function bootstrap() {
+      // Returning from Google OAuth — session should exist; use getSession (local cookies, no 403).
+      if (returningFromAuth) {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        const user = session?.user ?? null;
+
+        if (!user) {
+          if (!cancelled) {
+            if (errorQ === "auth" && authMsg) {
+              setError(
+                authMsg.toLowerCase().includes("redirect")
+                  ? `OAuth redirect blocked: add https://contractor.kleenapp.co.uk/** in Supabase → Authentication → URL configuration. (${authMsg})`
+                  : `Google sign-in failed: ${authMsg}`,
+              );
+            } else if (errorQ === "role_upgrade") {
+              setError(
+                errorCode === "admin_account"
+                  ? "This Google account is an admin account. Use a different Google account to apply as a contractor."
+                  : "Google signed you in but the session did not stick. Clear cookies for kleenapp.co.uk, try Incognito, and confirm Vercel env keys match Supabase.",
+              );
+            } else {
+              setError(
+                "Google sign-in did not complete. Clear site cookies for kleenapp.co.uk and try again in an Incognito window.",
+              );
+            }
+            setBootstrapping(false);
+          }
+          return;
+        }
+
+        await finishSignedIn(user.id);
+        return;
+      }
+
+      // Fresh visitor — only redirect if already signed in; never show an error.
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (session?.user) {
+        setBootstrapping(true);
+        await finishSignedIn(session.user.id);
+      }
     }
 
     bootstrap();
     return () => {
       cancelled = true;
     };
-  }, [authMsg, errorCode, errorQ, needOperative, router]);
+  }, [authMsg, errorCode, errorQ, needOperative, returningFromAuth, router]);
 
   const handleGoogle = async () => {
     setError("");
@@ -152,7 +130,7 @@ function JoinContent() {
       options: { redirectTo },
     });
     if (err) {
-      setError(err.message);
+      setError(isBenignAuthError(err.message) ? "Could not start Google sign-in. Try again." : err.message);
       setOauthLoading(false);
     }
   };
@@ -170,11 +148,6 @@ function JoinContent() {
       <div className="w-full max-w-md">
         <ContractorPortalBrand />
         <h1 className="mt-6 text-center text-2xl font-bold text-slate-900">Become a Kleen contractor</h1>
-        {needOperative && !error && (
-          <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-center text-sm text-amber-950">
-            Your Google account signed in successfully. We are activating <strong>contractor</strong> access…
-          </p>
-        )}
         <p className="mt-2 text-center text-sm text-slate-600">
           Sign in with Google to start your <strong>contractor application</strong>. You will complete company details,
           services, and bank details in the portal, then submit for Kleen to review.
