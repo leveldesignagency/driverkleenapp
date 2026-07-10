@@ -59,8 +59,8 @@ export default function WizardServiceListItem({ row, saving, onSave, onDelete }:
 
   if (!editing) {
     return (
-      <li className="rounded-xl border border-slate-200 bg-slate-50/60 px-5 py-4 transition hover:border-slate-300">
-        <div className="flex items-start justify-between gap-4">
+      <li className="rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-4 transition hover:border-slate-300 sm:px-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
           <div className="min-w-0 flex-1">
             <p className="text-base font-semibold text-slate-900">{serviceName || row.service_id}</p>
             <p className="mt-1 text-sm font-medium text-brand-700">{priceLabel}</p>
@@ -71,7 +71,7 @@ export default function WizardServiceListItem({ row, saving, onSave, onDelete }:
               <p className="mt-2 line-clamp-2 text-xs text-slate-500">{row.contract_content}</p>
             )}
           </div>
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex shrink-0 flex-wrap items-center gap-2 sm:flex-nowrap">
             <button
               type="button"
               onClick={openEdit}

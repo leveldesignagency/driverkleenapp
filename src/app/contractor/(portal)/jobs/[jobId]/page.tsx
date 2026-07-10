@@ -339,7 +339,7 @@ export default function ContractorJobLayoutPage() {
           Back to jobs
         </Link>
         <h1 className="mt-1 text-2xl font-bold text-slate-900">Job layout</h1>
-        <p className="mt-1 text-sm text-slate-600">
+        <p className="mt-1 break-words text-sm text-slate-600">
           {job.reference} · {job.address_line_1}
           {job.city ? `, ${job.city}` : ""} · {job.postcode}
         </p>

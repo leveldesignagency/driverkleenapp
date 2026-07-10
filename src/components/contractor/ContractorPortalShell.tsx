@@ -1,7 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import Image from "next/image";
+import Link from "next/link";
+import { Menu } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import ContractorSidebar from "@/components/contractor/ContractorSidebar";
 import ContractorApplication from "@/components/contractor/ContractorApplication";
@@ -12,6 +15,8 @@ import { Loader2 } from "lucide-react";
 
 export default function ContractorPortalShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [operativeId, setOperativeId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [isVerified, setIsVerified] = useState(false);
@@ -136,6 +141,19 @@ export default function ContractorPortalShell({ children }: { children: React.Re
     bootstrap();
   }, [bootstrap]);
 
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!mobileNavOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [mobileNavOpen]);
+
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center bg-slate-50">
@@ -220,10 +238,28 @@ export default function ContractorPortalShell({ children }: { children: React.Re
         reopenOnboarding: () => {},
       }}
     >
-      <div className="flex h-screen bg-gradient-to-br from-slate-100 via-slate-50 to-brand-50/30">
-        <ContractorSidebar />
-        <main className="flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-7xl px-5 py-6 sm:px-8 lg:py-10">{children}</div>
+      <div className="flex h-[100dvh] flex-col overflow-hidden bg-gradient-to-br from-slate-100 via-slate-50 to-brand-50/30 lg:flex-row">
+        <header className="flex shrink-0 items-center gap-3 border-b border-slate-200/80 bg-white/95 px-4 py-3 backdrop-blur-sm lg:hidden">
+          <button
+            type="button"
+            onClick={() => setMobileNavOpen(true)}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm"
+            aria-label="Open menu"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+          <Link href="/contractor" className="flex min-w-0 flex-1 items-center gap-2">
+            <Image src="/images/kleen-logo.svg" alt="KLEEN" width={96} height={40} className="h-8 w-auto" />
+          </Link>
+          <span className="sr-only">Contractor portal</span>
+        </header>
+
+        <ContractorSidebar mobileOpen={mobileNavOpen} onClose={() => setMobileNavOpen(false)} />
+
+        <main className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
+          <div className="mx-auto w-full max-w-7xl px-4 py-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-6 lg:px-8 lg:py-10">
+            {children}
+          </div>
         </main>
         <ToastContainer />
       </div>

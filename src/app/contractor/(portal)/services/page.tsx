@@ -82,8 +82,8 @@ function ServiceListItem({
 
   if (!editing) {
     return (
-      <li className="rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-3">
-        <div className="flex items-start justify-between gap-3">
+      <li className="rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-3 sm:px-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
           <div className="min-w-0">
             <p className="font-medium text-slate-900">{serviceName || row.service_id}</p>
             <p className="mt-0.5 text-sm text-slate-600">{priceLabel}</p>
@@ -91,7 +91,7 @@ function ServiceListItem({
               <p className="mt-1 truncate text-xs text-slate-500">{row.contract_title}</p>
             )}
           </div>
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex shrink-0 flex-wrap items-center gap-2 sm:flex-nowrap">
             <button
               type="button"
               onClick={openEdit}
@@ -376,7 +376,7 @@ export default function ContractorServicesPage() {
         <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">{catalogWarning}</p>
       )}
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
         <h2 className="text-sm font-semibold text-slate-900">Your services</h2>
         <ul className="mt-4 space-y-3">
           {rows.map((r) => (
@@ -392,7 +392,7 @@ export default function ContractorServicesPage() {
         </ul>
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
         <h2 className="text-sm font-semibold text-slate-900">Add service</h2>
         {canAdd.length === 0 ? (
           <p className="mt-2 text-sm text-slate-500">

@@ -163,7 +163,7 @@ export default function ContractorDisputesPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-slate-900">Disputes</h1>
+      <h1 className="text-xl font-bold text-slate-900 sm:text-2xl">Disputes</h1>
       <p className="mt-1 text-sm text-slate-600">
         Disputes raised by customers on jobs you are assigned to. This thread is mediated by Kleen (no direct customer chat).
       </p>
@@ -179,7 +179,7 @@ export default function ContractorDisputesPage() {
               <button
                 type="button"
                 onClick={() => toggleExpand(d.id)}
-                className="flex w-full items-start justify-between gap-3 p-5 text-left transition-colors hover:bg-slate-50/80"
+                className="flex w-full flex-col gap-3 p-4 text-left transition-colors hover:bg-slate-50/80 sm:flex-row sm:items-start sm:justify-between sm:p-5"
               >
                 <div className="flex min-w-0 flex-1 items-start gap-3">
                   <span className="mt-0.5 text-slate-400">{open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}</span>
@@ -206,7 +206,7 @@ export default function ContractorDisputesPage() {
                   </div>
                 </div>
                 <span
-                  className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium capitalize ${
+                  className={`self-start rounded-full px-2.5 py-1 text-xs font-medium capitalize sm:shrink-0 ${
                     isResolved(d.status) ? "bg-accent-100 text-accent-700" : "bg-amber-100 text-amber-700"
                   }`}
                 >
@@ -251,7 +251,7 @@ export default function ContractorDisputesPage() {
                           ))
                         )}
                       </ul>
-                      <div className="mt-4 flex gap-2">
+                      <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end">
                         <textarea
                           value={replyText[d.id] || ""}
                           onChange={(e) => setReplyText((prev) => ({ ...prev, [d.id]: e.target.value }))}
@@ -263,7 +263,7 @@ export default function ContractorDisputesPage() {
                           type="button"
                           disabled={sendingId === d.id || !(replyText[d.id] || "").trim()}
                           onClick={() => sendReply(d)}
-                          className="btn-primary h-fit shrink-0 gap-2 self-end px-4 py-2"
+                          className="btn-primary h-fit w-full shrink-0 gap-2 px-4 py-2.5 sm:w-auto sm:self-end"
                         >
                           {sendingId === d.id ? (
                             <Loader2 className="h-4 w-4 animate-spin" />

@@ -190,6 +190,11 @@ export default function ContractorApplication({ operativeId, rejectionMessage, o
     [draftOperative, linkedServices, personnel],
   );
 
+  const activeStepIndex = steps.findIndex((s) => s.id === activeStep);
+  const activeStepMeta = steps[activeStepIndex] ?? steps[0];
+  const completedCount = steps.filter((s) => s.done && s.id !== "review").length;
+  const progressPct = Math.round((completedCount / (steps.length - 1)) * 100);
+
   const applicationComplete = isContractorOnboardingComplete(draftOperative, linkedServices, personnel);
 
   const usedServiceIds = new Set(linkedServices.map((s) => s.service_id));
@@ -319,28 +324,62 @@ export default function ContractorApplication({ operativeId, rejectionMessage, o
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-gradient-to-b from-slate-100 via-slate-50 to-white">
+    <div className="flex min-h-[100dvh] flex-col bg-gradient-to-b from-slate-100 via-slate-50 to-white">
       <header className="shrink-0 border-b border-slate-200/80 bg-white/90 backdrop-blur-sm">
-        <div className="mx-auto w-full max-w-7xl px-6 py-6 sm:px-10 lg:px-12">
+        <div className="mx-auto w-full max-w-7xl px-4 py-5 sm:px-8 sm:py-6 lg:px-12">
           <p className="text-xs font-semibold uppercase tracking-widest text-brand-600">Kleen contractor application</p>
           <p className="mt-0.5 text-[11px] font-medium text-slate-400">contractor.kleenapp.co.uk</p>
-          <h1 className="mt-3 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">Apply to work with Kleen</h1>
+          <h1 className="mt-3 text-xl font-bold tracking-tight text-slate-900 sm:text-2xl lg:text-3xl">Apply to work with Kleen</h1>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600 sm:text-base">
             Complete every section below. Kleen will review your application before you can access jobs.
           </p>
         </div>
       </header>
 
-      <div className="mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col gap-6 px-6 py-6 sm:px-10 sm:py-8 lg:flex-row lg:gap-10 lg:px-12">
-        <aside className="shrink-0 lg:w-80 lg:self-start">
+      <div className="mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col gap-4 px-4 py-4 sm:px-8 sm:py-6 lg:flex-row lg:gap-10 lg:px-12 lg:py-8">
+        {/* Mobile: compact step indicator */}
+        <div className="shrink-0 lg:hidden">
+          <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Step {activeStepIndex + 1} of {steps.length}
+              </p>
+              <p className="text-xs font-medium text-brand-700">{progressPct}% complete</p>
+            </div>
+            <p className="mt-1 text-sm font-semibold text-slate-900">{activeStepMeta?.label}</p>
+            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100">
+              <div className="h-full rounded-full bg-brand-500 transition-all duration-300" style={{ width: `${progressPct}%` }} />
+            </div>
+            <div className="-mx-1 mt-3 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {steps.map((step, i) => (
+                <button
+                  key={step.id}
+                  type="button"
+                  onClick={() => setActiveStep(step.id)}
+                  className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                    activeStep === step.id
+                      ? "bg-brand-600 text-white"
+                      : step.done && step.id !== "review"
+                        ? "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200"
+                        : "bg-slate-100 text-slate-600"
+                  }`}
+                >
+                  <span className="font-semibold">{i + 1}</span>
+                  <span className="max-w-[7rem] truncate sm:max-w-none">{step.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Desktop: full step sidebar */}
+        <aside className="hidden shrink-0 lg:block lg:w-80 lg:self-start">
           <div className="sticky top-6 rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm lg:p-6">
             <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Application steps</p>
             <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-slate-100">
               <div
                 className="h-full rounded-full bg-brand-500 transition-all duration-300"
-                style={{
-                  width: `${Math.round((steps.filter((s) => s.done && s.id !== "review").length / (steps.length - 1)) * 100)}%`,
-                }}
+                style={{ width: `${progressPct}%` }}
               />
             </div>
             <ul className="mt-5 space-y-1">
@@ -378,8 +417,8 @@ export default function ContractorApplication({ operativeId, rejectionMessage, o
           </div>
         </aside>
 
-        <main className="min-h-0 min-w-0 flex-1 pb-8">
-          <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm sm:p-8 lg:p-10">
+        <main className="min-h-0 min-w-0 flex-1 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+          <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm sm:p-6 lg:p-10">
             {rejectionMessage && (
               <div className="mb-6 flex gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
                 <ShieldAlert className="h-5 w-5 shrink-0" />
@@ -629,7 +668,7 @@ export default function ContractorApplication({ operativeId, rejectionMessage, o
                           }`}
                         >
                           {!isEditing ? (
-                            <div className="flex items-start justify-between gap-4">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                               <div className="min-w-0">
                                 <p className="text-base font-semibold text-slate-900">
                                   {p.full_name.trim() || `Person ${i + 1}`}
@@ -639,7 +678,7 @@ export default function ContractorApplication({ operativeId, rejectionMessage, o
                                   <p className="mt-2 text-xs font-medium text-emerald-700">Photo ID uploaded</p>
                                 )}
                               </div>
-                              <div className="flex shrink-0 items-center gap-2">
+                              <div className="flex shrink-0 flex-wrap items-center gap-2 sm:flex-nowrap">
                                 <button
                                   type="button"
                                   onClick={() => setEditingPersonnelIdx(i)}
@@ -821,7 +860,7 @@ export default function ContractorApplication({ operativeId, rejectionMessage, o
                     )}
                   </div>
                 )}
-                <div className="flex gap-3">
+                <div className="flex flex-col gap-3 sm:flex-row">
                   <input
                     value={areaInput}
                     onChange={(e) => setAreaInput(e.target.value)}
@@ -832,7 +871,7 @@ export default function ContractorApplication({ operativeId, rejectionMessage, o
                   <button
                     type="button"
                     onClick={addArea}
-                    className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800"
+                    className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800 sm:w-auto"
                   >
                     <Plus className="h-4 w-4" />
                     Add
@@ -1125,12 +1164,12 @@ function StepSection({
       </div>
       <div className="space-y-5">{children}</div>
       {onContinue && (
-        <div className="flex items-center gap-3 border-t border-slate-100 pt-6">
+        <div className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-6 sm:flex-row sm:items-center">
           {onBack && (
             <button
               type="button"
               onClick={onBack}
-              className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+              className="flex min-h-[44px] w-full items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 sm:w-auto"
             >
               <ChevronLeft className="h-4 w-4" />
               Back
@@ -1140,7 +1179,7 @@ function StepSection({
             type="button"
             disabled={saving || continueDisabled}
             onClick={onContinue}
-            className="ml-auto flex items-center gap-1.5 rounded-xl bg-brand-600 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-brand-500 disabled:opacity-50"
+            className="flex min-h-[44px] w-full items-center justify-center gap-1.5 rounded-xl bg-brand-600 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-brand-500 disabled:opacity-50 sm:ml-auto sm:w-auto"
           >
             {saving ? "Saving…" : continueLabel}
             {!saving && <ChevronRight className="h-4 w-4" />}
