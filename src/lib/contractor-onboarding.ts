@@ -96,8 +96,7 @@ function companyOk(operative: OperativeOnboardingRow): boolean {
     const cn = String(operative.company_number ?? "").replace(/\s/g, "");
     return cn.length >= 6;
   }
-  const utr = String(operative.utr_number ?? "").replace(/\D/g, "");
-  return utr.length === 10;
+  return true;
 }
 
 function addressOk(operative: OperativeOnboardingRow): boolean {
@@ -173,7 +172,7 @@ export function validateContractorOnboarding(
   if (!companyOk(operative)) {
     return isBusiness(operative)
       ? "Add company/trading name and Companies House number."
-      : "Add your business name and 10-digit UTR.";
+      : "Add your business or trading name.";
   }
   if (!phoneOk(operative)) return "Add a UK phone number.";
   if (!addressOk(operative)) return "Add your business address.";

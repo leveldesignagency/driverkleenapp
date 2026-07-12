@@ -22,7 +22,6 @@ export default function ContractorProfilePage() {
   const [notes, setNotes] = useState("");
   const [companyNumber, setCompanyNumber] = useState("");
   const [vatNumber, setVatNumber] = useState("");
-  const [utrNumber, setUtrNumber] = useState("");
   const [tradingName, setTradingName] = useState("");
   const [registeredAddress, setRegisteredAddress] = useState("");
   const [areaInput, setAreaInput] = useState("");
@@ -48,7 +47,6 @@ export default function ContractorProfilePage() {
         setNotes(op.notes || "");
         setCompanyNumber(op.company_number || "");
         setVatNumber(op.vat_number || "");
-        setUtrNumber(op.utr_number || "");
         setTradingName((op as { trading_name?: string }).trading_name || "");
         setRegisteredAddress((op as { registered_address?: string }).registered_address || "");
         setServiceAreas(Array.isArray(op.service_areas) ? op.service_areas : []);
@@ -82,7 +80,6 @@ export default function ContractorProfilePage() {
       notes: notes.trim() || null,
       company_number: companyNumber.trim() || null,
       vat_number: vatNumber.trim() || null,
-      utr_number: utrNumber.replace(/\D/g, "").slice(0, 10) || null,
       trading_name: tradingName.trim() || null,
       registered_address: registeredAddress.trim() || null,
       service_areas: serviceAreas,
@@ -311,15 +308,6 @@ export default function ContractorProfilePage() {
               <input
                 value={vatNumber}
                 onChange={(e) => setVatNumber(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-              />
-            </label>
-            <label className="block sm:col-span-2">
-              <span className="text-xs font-medium text-slate-500">UTR (10 digits)</span>
-              <input
-                inputMode="numeric"
-                value={utrNumber}
-                onChange={(e) => setUtrNumber(e.target.value.replace(/\D/g, "").slice(0, 10))}
                 className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
               />
             </label>

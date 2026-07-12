@@ -64,7 +64,6 @@ export default function ContractorApplication({ operativeId, rejectionMessage, o
   const [tradingName, setTradingName] = useState("");
   const [companyNumber, setCompanyNumber] = useState("");
   const [vatNumber, setVatNumber] = useState("");
-  const [utrNumber, setUtrNumber] = useState("");
   const [phone, setPhone] = useState("");
   const [registeredAddress, setRegisteredAddress] = useState("");
   const [idDocumentPath, setIdDocumentPath] = useState<string | null>(null);
@@ -115,7 +114,6 @@ export default function ContractorApplication({ operativeId, rejectionMessage, o
     setTradingName(String(op.trading_name ?? ""));
     setCompanyNumber(String(op.company_number ?? ""));
     setVatNumber(String(op.vat_number ?? ""));
-    setUtrNumber(String(op.utr_number ?? ""));
     setPhone(String(op.phone ?? ""));
     setRegisteredAddress(String(op.registered_address ?? ""));
     setIdDocumentPath(op.id_document_storage_path || null);
@@ -157,7 +155,6 @@ export default function ContractorApplication({ operativeId, rejectionMessage, o
       trading_name: tradingName,
       company_number: companyNumber,
       vat_number: vatNumber,
-      utr_number: utrNumber,
       phone,
       registered_address: registeredAddress,
       service_areas: serviceAreas,
@@ -174,7 +171,6 @@ export default function ContractorApplication({ operativeId, rejectionMessage, o
       tradingName,
       companyNumber,
       vatNumber,
-      utrNumber,
       phone,
       registeredAddress,
       serviceAreas,
@@ -490,7 +486,7 @@ export default function ContractorApplication({ operativeId, rejectionMessage, o
                 description={
                   contractorType === "business"
                     ? "Companies House details and VAT if registered."
-                    : "Your trading name and HMRC UTR (Unique Taxpayer Reference)."
+                    : "Your trading or business name."
                 }
                 onBack={() => setActiveStep("identity")}
                 onContinue={async () => {
@@ -502,10 +498,6 @@ export default function ContractorApplication({ operativeId, rejectionMessage, o
                     setError("Enter your Companies House registration number.");
                     return;
                   }
-                  if (contractorType === "sole_trader" && utrNumber.replace(/\D/g, "").length !== 10) {
-                    setError("Enter your 10-digit UTR.");
-                    return;
-                  }
                   setSaving(true);
                   setError(null);
                   try {
@@ -514,7 +506,6 @@ export default function ContractorApplication({ operativeId, rejectionMessage, o
                       trading_name: tradingName.trim() || null,
                       company_number: companyNumber.trim() || null,
                       vat_number: vatNumber.trim() || null,
-                      utr_number: utrNumber.replace(/\D/g, "").slice(0, 10) || null,
                     });
                     setActiveStep("contact");
                   } catch (e) {
@@ -539,13 +530,7 @@ export default function ContractorApplication({ operativeId, rejectionMessage, o
                     />
                     <Field label="VAT number (if registered)" value={vatNumber} onChange={setVatNumber} placeholder="Optional" />
                   </div>
-                ) : (
-                  <Field
-                    label="UTR — Unique Taxpayer Reference (10 digits)"
-                    value={utrNumber}
-                    onChange={(v) => setUtrNumber(v.replace(/\D/g, "").slice(0, 10))}
-                  />
-                )}
+                ) : null}
               </StepSection>
             )}
 
