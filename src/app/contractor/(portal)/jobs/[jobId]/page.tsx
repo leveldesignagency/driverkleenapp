@@ -119,7 +119,28 @@ export default function ContractorJobLayoutPage() {
       .eq("job_id", jobId)
       .eq("operative_id", operativeId)
       .maybeSingle();
-    if (assignErr || !assignment) {
+
+    let hasAccess = !assignErr && !!assignment;
+    if (!hasAccess) {
+      // Also allow when this contractor's quote was accepted (assignment may be missing).
+      const { data: jobGate } = await supabase
+        .from("jobs")
+        .select("accepted_quote_request_id")
+        .eq("id", jobId)
+        .maybeSingle();
+      const acceptedQrId = jobGate?.accepted_quote_request_id as string | null | undefined;
+      if (acceptedQrId) {
+        const { data: qr } = await supabase
+          .from("quote_requests")
+          .select("id")
+          .eq("id", acceptedQrId)
+          .eq("operative_id", operativeId)
+          .maybeSingle();
+        hasAccess = !!qr;
+      }
+    }
+
+    if (!hasAccess) {
       router.replace("/contractor/jobs");
       return;
     }
