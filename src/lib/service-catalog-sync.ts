@@ -22,6 +22,7 @@ const OPERATIVE_LIMITS: Record<string, { min: number; max: number }> = {
   "full-house": { min: 1, max: 3 },
   "room-clean": { min: 1, max: 1 },
   bathroom: { min: 1, max: 1 },
+  "carpet-clean": { min: 1, max: 2 },
   "gutter-clear": { min: 1, max: 2 },
   "fascia-soffit": { min: 1, max: 2 },
   "oven-clean": { min: 1, max: 1 },

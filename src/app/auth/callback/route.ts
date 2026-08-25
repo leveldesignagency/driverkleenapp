@@ -1,6 +1,7 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { upgradeCustomerToOperative } from "@/lib/contractor-role-upgrade";
+import { maybeSendWelcomeEmail } from "@/lib/maybe-send-welcome";
 import { getSupabaseAuthCookieOptions } from "@/lib/supabase/auth-cookie-options";
 
 /**
@@ -56,7 +57,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(fail);
   }
 
-  const userId = exchanged?.session?.user?.id;
+  const user = exchanged?.session?.user;
+  const userId = user?.id;
   if (intent === "contractor" && userId) {
     const upgraded = await upgradeCustomerToOperative(userId);
     if (!upgraded.ok) {
@@ -66,6 +68,11 @@ export async function GET(request: NextRequest) {
       fail.searchParams.set("error", "role_upgrade");
       if (upgraded.code) fail.searchParams.set("code", upgraded.code);
       return NextResponse.redirect(fail);
+    }
+    if (user) {
+      void maybeSendWelcomeEmail({ user, audience: "contractor" }).catch((e) =>
+        console.error("auth callback contractor welcome:", e),
+      );
     }
   }
 

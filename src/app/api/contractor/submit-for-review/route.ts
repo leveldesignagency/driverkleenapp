@@ -3,6 +3,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import { validateContractorOnboarding } from "@/lib/contractor-onboarding";
 import { sendAdminContractorReviewEmail } from "@/lib/resend-admin-notify";
+import { sendContractorApplicationSubmittedEmail } from "@/lib/resend-contractor-lifecycle";
 
 function isMissingSubmittedForReviewColumn(message: string) {
   const m = message.toLowerCase();
@@ -93,6 +94,14 @@ export async function POST() {
       console.error("submit-for-review admin email:", result.error);
     }
   });
+
+  const contractorEmail = String(updated.email || user.email || "").trim();
+  if (contractorEmail) {
+    void sendContractorApplicationSubmittedEmail({
+      toEmail: contractorEmail,
+      fullName: String(updated.full_name || "there"),
+    }).catch((e) => console.error("submit-for-review contractor email:", e));
+  }
 
   return NextResponse.json({
     ok: true,

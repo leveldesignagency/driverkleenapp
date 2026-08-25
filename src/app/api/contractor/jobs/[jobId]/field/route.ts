@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import { runContractorFieldAction, type FieldActionName } from "@/lib/contractor-field-job";
-import { sendCustomerContractorEnRouteEmail } from "@/lib/resend-customer-job-updates";
+import {
+  loadJobFieldEmailSnapshot,
+  sendEmailsForFieldAction,
+} from "@/lib/field-status-emails";
 
 export async function POST(
   request: NextRequest,
@@ -21,7 +24,7 @@ export async function POST(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { data: operative } = await authClient.from("operatives").select("id").eq("user_id", user.id).maybeSingle();
+  const { data: operative } = await authClient.from("operatives").select("id, full_name").eq("user_id", user.id).maybeSingle();
   if (!operative?.id) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
@@ -50,11 +53,7 @@ export async function POST(
   }
 
   const admin = createServiceRoleClient();
-  const { data: before } = await admin
-    .from("jobs")
-    .select("operative_en_route_at, user_id, reference")
-    .eq("id", jobId)
-    .maybeSingle();
+  const before = await loadJobFieldEmailSnapshot(admin, jobId);
 
   const result = await runContractorFieldAction(admin, jobId, action, {
     incompleteReason: body.reason,
@@ -65,22 +64,14 @@ export async function POST(
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
-  if (action === "en_route" && before && !before.operative_en_route_at) {
-    const uid = (before as { user_id?: string }).user_id;
-    const ref = (before as { reference?: string }).reference || jobId.slice(0, 8).toUpperCase();
-    if (uid) {
-      const { data: prof } = await admin.from("profiles").select("full_name, email").eq("id", uid).maybeSingle();
-      const toEmail = prof?.email?.trim();
-      if (toEmail) {
-        await sendCustomerContractorEnRouteEmail({
-          toEmail,
-          customerName: prof?.full_name?.trim() || "there",
-          jobReference: ref,
-          jobId,
-        });
-      }
-    }
-  }
+  await sendEmailsForFieldAction({
+    supabase: admin,
+    jobId,
+    action,
+    before,
+    incompleteReason: body.reason,
+    contractorName: operative.full_name?.trim() || undefined,
+  });
 
   return NextResponse.json({ ok: true });
 }

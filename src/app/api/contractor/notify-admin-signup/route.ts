@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { sendAdminContractorSignupEmail } from "@/lib/resend-admin-notify";
+import { sendContractorWelcomeEmail } from "@/lib/resend-contractor-lifecycle";
+import { createServiceRoleClient } from "@/lib/supabase/service-role";
 
 export async function POST() {
   const supabase = createServerSupabaseClient();
@@ -22,11 +24,31 @@ export async function POST() {
     return NextResponse.json({ error: "Contractor profile not found" }, { status: 404 });
   }
 
+  const fullName = String(operative.full_name || profile.full_name || "Contractor");
+  const email = String(operative.email || profile.email || user.email || "").trim();
+
   const result = await sendAdminContractorSignupEmail({
     operativeId: String(operative.id),
-    fullName: String(operative.full_name || profile.full_name || "Contractor"),
-    email: String(operative.email || profile.email || user.email || ""),
+    fullName,
+    email,
   });
+
+  if (email && !user.user_metadata?.welcome_email_sent_at) {
+    const welcome = await sendContractorWelcomeEmail({ toEmail: email, fullName });
+    if (welcome.ok) {
+      try {
+        const admin = createServiceRoleClient();
+        await admin.auth.admin.updateUserById(user.id, {
+          user_metadata: {
+            ...user.user_metadata,
+            welcome_email_sent_at: new Date().toISOString(),
+          },
+        });
+      } catch (e) {
+        console.error("notify-admin-signup welcome metadata:", e);
+      }
+    }
+  }
 
   if (!result.ok) {
     return NextResponse.json({ error: result.error || "Email not sent" }, { status: 503 });

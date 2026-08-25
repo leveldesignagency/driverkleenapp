@@ -53,7 +53,7 @@ export const SERVICE_CATEGORIES: ServiceCategory[] = [
     id: "interior",
     name: "Interior Cleaning",
     icon: "Sparkles",
-    description: "Full house, room-by-room, or specific area cleaning",
+    description: "Full house, room-by-room, carpet, or specific area cleaning",
     services: [
       {
         id: "full-house",
@@ -82,6 +82,16 @@ export const SERVICE_CATEGORIES: ServiceCategory[] = [
         basePrice: 40,
         pricePerUnit: 18,
         estimatedMinutes: 60,
+        categoryId: "interior",
+        enabled: true,
+      },
+      {
+        id: "carpet-clean",
+        name: "Carpet Cleaning",
+        description: "Professional carpet and rug cleaning for homes and offices",
+        basePrice: 75,
+        pricePerUnit: 25,
+        estimatedMinutes: 90,
         categoryId: "interior",
         enabled: true,
       },

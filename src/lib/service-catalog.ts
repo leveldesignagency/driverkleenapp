@@ -2,7 +2,7 @@ import { SERVICE_CATEGORIES } from "@/lib/services";
 
 export type CatalogService = { id: string; name: string };
 
-/** Full Kleen catalogue from app config — always 24 services when all categories are enabled. */
+/** Full Kleen catalogue from app config — always 25 services when all categories are enabled. */
 export function getStaticServiceCatalog(): CatalogService[] {
   return SERVICE_CATEGORIES.flatMap((c) =>
     c.services.filter((s) => s.enabled).map((s) => ({ id: s.id, name: s.name })),
