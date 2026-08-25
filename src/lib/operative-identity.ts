@@ -121,7 +121,7 @@ export async function resolveOperativeIdentity(
   for (const row of [...(byUser || []), ...(byEmail || [])]) {
     byId.set(String(row.id), row as OperativeRow);
   }
-  const candidates = [...byId.values()];
+  const candidates = Array.from(byId.values());
 
   if (candidates.length === 0) {
     return { operative: null, merged: false, mergedCount: 0 };

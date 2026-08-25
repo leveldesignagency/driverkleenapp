@@ -25,8 +25,10 @@ export async function GET() {
   const operativeId = String(operative.id);
 
   const basePostcode = String(operative.base_postcode || "").trim();
-  const radius = operative.max_travel_radius_miles ?? 25;
-  const areas = Array.isArray(operative.service_areas) ? operative.service_areas : [];
+  const radius = Number(operative.max_travel_radius_miles) || 25;
+  const areas = Array.isArray(operative.service_areas)
+    ? operative.service_areas.filter((a): a is string => typeof a === "string")
+    : [];
 
   const baseCoords = basePostcode ? await geocodeUkPostcode(basePostcode) : null;
 

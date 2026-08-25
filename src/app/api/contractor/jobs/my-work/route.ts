@@ -93,7 +93,7 @@ export async function GET() {
       assigned_at: job.preferred_date || new Date().toISOString(),
       completed_at: null,
       jobs: job,
-    });
+    } as unknown as (typeof fromAssignments)[number]);
     assignedJobIds.add(job.id);
   }
 
