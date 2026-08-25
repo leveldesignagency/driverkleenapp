@@ -96,10 +96,12 @@ export async function POST() {
   });
 
   const contractorEmail = String(updated.email || user.email || "").trim();
+  const isAdminInvite = String(updated.onboarding_source || "") === "admin_invite";
   if (contractorEmail) {
     void sendContractorApplicationSubmittedEmail({
       toEmail: contractorEmail,
       fullName: String(updated.full_name || "there"),
+      adminInvite: isAdminInvite,
     }).catch((e) => console.error("submit-for-review contractor email:", e));
   }
 

@@ -30,6 +30,7 @@ function JoinContent() {
   const router = useRouter();
   const search = useSearchParams();
   const needOperative = search.get("need_operative") === "1";
+  const isInvite = search.get("invite") === "1";
   const errorQ = search.get("error");
   const errorCode = search.get("code");
   const authMsg = search.get("msg");
@@ -130,15 +131,27 @@ function JoinContent() {
     <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 px-6 py-16">
       <div className="w-full max-w-md">
         <ContractorPortalBrand />
-        <h1 className="mt-6 text-center text-2xl font-bold text-slate-900">Become a Kleen contractor</h1>
+        <h1 className="mt-6 text-center text-2xl font-bold text-slate-900">
+          {isInvite ? "Confirm your contractor profile" : "Become a Kleen contractor"}
+        </h1>
         <p className="mt-2 text-center text-sm text-slate-600">
           Sign in with Google to start your <strong>contractor application</strong>. You will complete company details,
           services, and bank details in the portal, then submit for Kleen to review.
         </p>
-        <p className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-center text-xs text-slate-600">
-          Your account stays <strong>pending</strong> until Kleen approves you in the admin dashboard. Complete every
-          step in the onboarding checklist, tap <strong>Send for review</strong>, then wait for verification before
-          jobs unlock.
+                <p className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-center text-xs text-slate-600">
+          {isInvite ? (
+            <>
+              Kleen staff already set up your profile. Sign in with the <strong>same Google email</strong> they used,
+              review the prefilled details, then confirm. You still need Kleen approval before jobs unlock — this is not
+              a new website application.
+            </>
+          ) : (
+            <>
+              Your account stays <strong>pending</strong> until Kleen approves you in the admin dashboard. Complete every
+              step in the onboarding checklist, tap <strong>Send for review</strong>, then wait for verification before
+              jobs unlock.
+            </>
+          )}
         </p>
 
         <div className="mt-8 space-y-4">

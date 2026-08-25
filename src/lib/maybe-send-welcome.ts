@@ -36,6 +36,37 @@ export async function maybeSendWelcomeEmail(params: {
     toEmail.split("@")[0] ||
     "there";
 
+  // Admin-invited contractors already got a confirm-details email — skip "start application" welcome.
+  if (audience === "contractor") {
+    try {
+      const admin = createServiceRoleClient();
+      const { data: matches } = await admin
+        .from("operatives")
+        .select("id, onboarding_source, admin_invited_at")
+        .ilike("email", toEmail.toLowerCase())
+        .limit(10);
+      const adminInvite = (matches || []).some(
+        (r) =>
+          String(r.onboarding_source || "") === "admin_invite" || Boolean(r.admin_invited_at),
+      );
+      if (adminInvite) {
+        try {
+          await admin.auth.admin.updateUserById(user.id, {
+            user_metadata: {
+              ...user.user_metadata,
+              welcome_email_sent_at: new Date().toISOString(),
+            },
+          });
+        } catch (e) {
+          console.error("maybeSendWelcomeEmail skip-invite metadata:", e);
+        }
+        return { sent: false, reason: "admin_invite" };
+      }
+    } catch (e) {
+      console.error("maybeSendWelcomeEmail admin-invite check:", e);
+    }
+  }
+
   const result =
     audience === "contractor"
       ? await sendContractorWelcomeEmail({ toEmail, fullName: name })

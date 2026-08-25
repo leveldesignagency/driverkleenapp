@@ -21,21 +21,50 @@ export async function sendContractorWelcomeEmail(params: {
   });
 }
 
-/** Contractor: application submitted for review. */
-export async function sendContractorApplicationSubmittedEmail(params: {
+
+/** Staff added this contractor — ask them to confirm prefilled details (not a new application). */
+export async function sendContractorAdminInviteEmail(params: {
   toEmail: string;
   fullName: string;
 }): Promise<EmailSendResult> {
   const name = params.fullName.trim() || "there";
+  const email = params.toEmail.trim();
   const html = emailLayout({
-    title: "Application submitted",
-    heading: "We've received your application",
-    introHtml: `<p>Hi ${escapeHtml(name)}, your contractor application is with Kleen for review. We'll email you when a decision is made.</p>`,
+    title: "Confirm your Kleen contractor details",
+    heading: "Kleen has set up your contractor profile",
+    introHtml: `<p>Hi ${escapeHtml(name)}, the Kleen team has added you as a contractor and filled in your details.</p><p>Please sign in with <strong>Google using ${escapeHtml(email)}</strong>, review everything we prepared, complete any missing steps (such as photo ID), then confirm. Kleen still needs to approve you before you can take jobs.</p>`,
+    cta: {
+      href: contractorPortalUrl("/contractor/join?invite=1"),
+      label: "Confirm your details",
+    },
+    footerNote: "This is not a new application — you are confirming the profile staff already created for you.",
+  });
+  return sendKleenEmail({
+    to: email,
+    subject: "Confirm your Kleen contractor details",
+    html,
+  });
+}
+
+/** Contractor: application submitted for review. */
+export async function sendContractorApplicationSubmittedEmail(params: {
+  toEmail: string;
+  fullName: string;
+  adminInvite?: boolean;
+}): Promise<EmailSendResult> {
+  const name = params.fullName.trim() || "there";
+  const adminInvite = Boolean(params.adminInvite);
+  const html = emailLayout({
+    title: adminInvite ? "Details confirmed" : "Application submitted",
+    heading: adminInvite ? "We've received your confirmed details" : "We've received your application",
+    introHtml: adminInvite
+      ? `<p>Hi ${escapeHtml(name)}, thanks for confirming your contractor details. Kleen is reviewing your profile and will email you when a decision is made.</p>`
+      : `<p>Hi ${escapeHtml(name)}, your contractor application is with Kleen for review. We'll email you when a decision is made.</p>`,
     cta: { href: contractorPortalUrl("/contractor"), label: "Open portal" },
   });
   return sendKleenEmail({
     to: params.toEmail,
-    subject: "Application submitted — Kleen contractors",
+    subject: adminInvite ? "Details confirmed — Kleen contractors" : "Application submitted — Kleen contractors",
     html,
   });
 }

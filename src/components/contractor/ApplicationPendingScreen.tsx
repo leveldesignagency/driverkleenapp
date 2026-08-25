@@ -6,9 +6,10 @@ import { Clock, LogOut, Mail } from "lucide-react";
 type Props = {
   submittedAt: string | null;
   email?: string | null;
+  adminInvite?: boolean;
 };
 
-export default function ApplicationPendingScreen({ submittedAt, email }: Props) {
+export default function ApplicationPendingScreen({ submittedAt, email, adminInvite = false }: Props) {
   const signOut = async () => {
     const supabase = createClient();
     await supabase.auth.signOut({ scope: "global" });
@@ -21,10 +22,13 @@ export default function ApplicationPendingScreen({ submittedAt, email }: Props) 
         <div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-100">
           <Clock className="h-7 w-7 text-amber-700" />
         </div>
-        <h1 className="mt-5 text-2xl font-bold text-slate-900">Application under review</h1>
+        <h1 className="mt-5 text-2xl font-bold text-slate-900">
+          {adminInvite ? "Details under review" : "Application under review"}
+        </h1>
         <p className="mt-2 text-sm leading-relaxed text-slate-600">
-          Thanks for applying to work with Kleen. Our team is reviewing your application and will email you once a
-          decision is made. You cannot access the contractor dashboard until you are approved.
+          {adminInvite
+            ? "Thanks for confirming your details. Our team is reviewing your profile and will email you once a decision is made. You cannot access the contractor dashboard until you are approved."
+            : "Thanks for applying to work with Kleen. Our team is reviewing your application and will email you once a decision is made. You cannot access the contractor dashboard until you are approved."}
         </p>
         {submittedAt && (
           <p className="mt-4 text-xs text-slate-500">

@@ -26,6 +26,7 @@ export default function ContractorPortalShell({ children }: { children: React.Re
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deactivated, setDeactivated] = useState(false);
+  const [adminInvite, setAdminInvite] = useState(false);
 
   const bootstrap = useCallback(async () => {
     setError(null);
@@ -86,11 +87,33 @@ export default function ContractorPortalShell({ children }: { children: React.Re
     }
 
     let { data: op } = await supabase.from("operatives").select("*").eq("user_id", user.id).maybeSingle();
+    let isAdminInvite = false;
 
     if (op && op.is_active === false) {
       setDeactivated(true);
       setLoading(false);
       return;
+    }
+
+    if (!op) {
+      const claimRes = await fetch("/api/contractor/claim-admin-invite", {
+        method: "POST",
+        credentials: "include",
+      });
+      const claimJson = (await claimRes.json().catch(() => ({}))) as {
+        ok?: boolean;
+        claimed?: boolean;
+        operative?: Record<string, unknown>;
+        admin_invite?: boolean;
+        error?: string;
+      };
+
+      if (claimRes.ok && claimJson.operative) {
+        op = claimJson.operative as typeof op;
+        isAdminInvite = Boolean(claimJson.admin_invite) || Boolean(claimJson.claimed);
+      } else if (!claimRes.ok && claimJson.error) {
+        console.warn("claim-admin-invite:", claimJson.error);
+      }
     }
 
     if (!op) {
@@ -106,29 +129,51 @@ export default function ContractorPortalShell({ children }: { children: React.Re
           service_areas: [],
           is_active: true,
           is_verified: false,
+          onboarding_source: "self_apply",
         })
         .select("*")
         .single();
 
       if (insErr) {
         console.error(insErr);
-        setError(
-          insErr.message.includes("duplicate") || insErr.code === "23505"
-            ? "A contractor record may already exist for another account. Contact Kleen support."
-            : insErr.message,
-        );
-        setLoading(false);
-        return;
-      }
-      op = inserted;
+        // Duplicate email / race: try claim once more before failing
+        const retryClaim = await fetch("/api/contractor/claim-admin-invite", {
+          method: "POST",
+          credentials: "include",
+        });
+        const retryJson = (await retryClaim.json().catch(() => ({}))) as {
+          operative?: Record<string, unknown>;
+          admin_invite?: boolean;
+          claimed?: boolean;
+        };
+        if (retryClaim.ok && retryJson.operative) {
+          op = retryJson.operative as typeof op;
+          isAdminInvite = Boolean(retryJson.admin_invite) || Boolean(retryJson.claimed);
+        } else {
+          setError(
+            insErr.message.includes("duplicate") || insErr.code === "23505"
+              ? "A contractor record may already exist for another account. Contact Kleen support."
+              : insErr.message,
+          );
+          setLoading(false);
+          return;
+        }
+      } else {
+        op = inserted;
 
-      void fetch("/api/contractor/notify-admin-signup", {
-        method: "POST",
-        credentials: "include",
-      }).catch((e) => console.warn("notify-admin-signup failed:", e));
+        void fetch("/api/contractor/notify-admin-signup", {
+          method: "POST",
+          credentials: "include",
+        }).catch((e) => console.warn("notify-admin-signup failed:", e));
+      }
     }
 
     const row = op as Record<string, unknown>;
+    if (!isAdminInvite) {
+      isAdminInvite =
+        String(row.onboarding_source || "") === "admin_invite" || Boolean(row.admin_invited_at);
+    }
+    setAdminInvite(isAdminInvite);
     setOperativeId(String(row.id));
     setIsVerified(!!row.is_verified);
     setRejectedAt(row.rejected_at ? String(row.rejected_at) : null);
@@ -212,7 +257,13 @@ export default function ContractorPortalShell({ children }: { children: React.Re
   const needsApplication = !isVerified && !pendingReview;
 
   if (pendingReview) {
-    return <ApplicationPendingScreen submittedAt={submittedForReviewAt} email={userEmail} />;
+    return (
+      <ApplicationPendingScreen
+        submittedAt={submittedForReviewAt}
+        email={userEmail}
+        adminInvite={adminInvite}
+      />
+    );
   }
 
   if (needsApplication) {
@@ -221,6 +272,7 @@ export default function ContractorPortalShell({ children }: { children: React.Re
         operativeId={operativeId}
         rejectionMessage={rejectionMessage}
         onSubmitted={bootstrap}
+        adminInvite={adminInvite}
       />
     );
   }

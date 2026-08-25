@@ -47,9 +47,16 @@ type Props = {
   operativeId: string;
   rejectionMessage: string | null;
   onSubmitted: () => Promise<void>;
+  /** Staff-created profile: confirm details, not a fresh website application */
+  adminInvite?: boolean;
 };
 
-export default function ContractorApplication({ operativeId, rejectionMessage, onSubmitted }: Props) {
+export default function ContractorApplication({
+  operativeId,
+  rejectionMessage,
+  onSubmitted,
+  adminInvite = false,
+}: Props) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [submittingReview, setSubmittingReview] = useState(false);
@@ -290,7 +297,11 @@ export default function ContractorApplication({ operativeId, rejectionMessage, o
 
   const handleSubmitForReview = async () => {
     if (!termsAccepted) {
-      setError("Accept the Kleen contractor terms to submit your application.");
+      setError(
+        adminInvite
+          ? "Accept the Kleen contractor terms to confirm your details."
+          : "Accept the Kleen contractor terms to submit your application.",
+      );
       return;
     }
     setSubmittingReview(true);
@@ -305,7 +316,7 @@ export default function ContractorApplication({ operativeId, rejectionMessage, o
     const json = (await res.json().catch(() => ({}))) as { error?: string };
     setSubmittingReview(false);
     if (!res.ok) {
-      setError(json.error || "Could not submit application");
+      setError(json.error || (adminInvite ? "Could not confirm details" : "Could not submit application"));
       return;
     }
     await onSubmitted();
@@ -323,12 +334,29 @@ export default function ContractorApplication({ operativeId, rejectionMessage, o
     <div className="flex min-h-[100dvh] flex-col bg-gradient-to-b from-slate-100 via-slate-50 to-white">
       <header className="shrink-0 border-b border-slate-200/80 bg-white/90 backdrop-blur-sm">
         <div className="mx-auto w-full max-w-7xl px-4 py-5 sm:px-8 sm:py-6 lg:px-12">
-          <p className="text-xs font-semibold uppercase tracking-widest text-brand-600">Kleen contractor application</p>
-          <p className="mt-0.5 text-[11px] font-medium text-slate-400">contractor.kleenapp.co.uk</p>
-          <h1 className="mt-3 text-xl font-bold tracking-tight text-slate-900 sm:text-2xl lg:text-3xl">Apply to work with Kleen</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600 sm:text-base">
-            Complete every section below. Kleen will review your application before you can access jobs.
-          </p>
+          {adminInvite ? (
+            <>
+              <p className="text-xs font-semibold uppercase tracking-widest text-brand-600">Confirm your Kleen profile</p>
+              <p className="mt-0.5 text-[11px] font-medium text-slate-400">contractor.kleenapp.co.uk</p>
+              <h1 className="mt-3 text-xl font-bold tracking-tight text-slate-900 sm:text-2xl lg:text-3xl">
+                Review the details Kleen prepared for you
+              </h1>
+              <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600 sm:text-base">
+                Staff already filled in much of your profile. Check each section, complete anything missing (photo ID,
+                prices, etc.), then confirm. Kleen still needs to approve you before you can take jobs — this is not a
+                brand-new website application.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-xs font-semibold uppercase tracking-widest text-brand-600">Kleen contractor application</p>
+              <p className="mt-0.5 text-[11px] font-medium text-slate-400">contractor.kleenapp.co.uk</p>
+              <h1 className="mt-3 text-xl font-bold tracking-tight text-slate-900 sm:text-2xl lg:text-3xl">Apply to work with Kleen</h1>
+              <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600 sm:text-base">
+                Complete every section below. Kleen will review your application before you can quote on jobs.
+              </p>
+            </>
+          )}
         </div>
       </header>
 
@@ -1039,7 +1067,15 @@ export default function ContractorApplication({ operativeId, rejectionMessage, o
             )}
 
             {activeStep === "review" && (
-              <StepSection title="Submit application" description="Review your checklist and send to Kleen for approval." onBack={() => setActiveStep("bank")}>
+              <StepSection
+                title={adminInvite ? "Confirm details" : "Submit application"}
+                description={
+                  adminInvite
+                    ? "Check the checklist, accept the terms, and send your confirmed details to Kleen for approval."
+                    : "Review your checklist and send to Kleen for approval."
+                }
+                onBack={() => setActiveStep("bank")}
+              >
                 <ul className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50/80">
                   {steps
                     .filter((s) => s.id !== "review")
@@ -1082,11 +1118,19 @@ export default function ContractorApplication({ operativeId, rejectionMessage, o
                     onClick={handleSubmitForReview}
                     className="mt-6 w-full rounded-xl bg-emerald-700 px-4 py-4 text-sm font-semibold text-white shadow-sm hover:bg-emerald-600 disabled:opacity-50"
                   >
-                    {submittingReview ? "Submitting…" : "Submit application for review"}
+                    {submittingReview
+                      ? adminInvite
+                        ? "Confirming…"
+                        : "Submitting…"
+                      : adminInvite
+                        ? "Confirm details for review"
+                        : "Submit application for review"}
                   </button>
                 ) : (
                   <p className="mt-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                    Complete every section before submitting.
+                    {adminInvite
+                      ? "Complete every section before confirming."
+                      : "Complete every section before submitting."}
                   </p>
                 )}
               </StepSection>
