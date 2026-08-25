@@ -33,7 +33,7 @@ async function countSelfBookedQuotes(
 ): Promise<number> {
   const { count, error } = await admin
     .from("quote_requests")
-    .select("id, jobs!inner(user_id)", { count: "exact", head: true })
+    .select("id, jobs!job_id!inner(user_id)", { count: "exact", head: true })
     .eq("operative_id", operativeId)
     .eq("jobs.user_id", userId);
   if (error) {

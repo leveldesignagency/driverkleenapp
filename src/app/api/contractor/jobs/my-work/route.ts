@@ -39,12 +39,16 @@ export async function GET() {
 
   const operativeId = String(operative.id);
 
+  const jobEmbed = `jobs!job_id (
+           id, reference, postcode, preferred_date, status, services ( name )
+         )`;
+
   const [qrRes, assignRes, acceptedQrRes] = await Promise.all([
     admin
       .from("quote_requests")
       .select(
         `id, status, initiated_by, deadline, message, sent_at, operative_id,
-         jobs ( id, reference, postcode, preferred_date, status, services ( name ) ),
+         ${jobEmbed},
          quote_responses ( price_pence, estimated_hours, sent_to_customer_at )`,
       )
       .eq("operative_id", operativeId)
@@ -53,7 +57,7 @@ export async function GET() {
       .from("job_assignments")
       .select(
         `id, assigned_at, completed_at,
-         jobs ( id, reference, postcode, preferred_date, status, services ( name ) )`,
+         jobs!job_id ( id, reference, postcode, preferred_date, status, services ( name ) )`,
       )
       .eq("operative_id", operativeId)
       .order("assigned_at", { ascending: false }),
@@ -61,7 +65,7 @@ export async function GET() {
       .from("quote_requests")
       .select(
         `id, operative_id,
-         jobs!inner ( id, reference, postcode, preferred_date, status, accepted_quote_request_id, services ( name ) )`,
+         jobs!job_id!inner ( id, reference, postcode, preferred_date, status, accepted_quote_request_id, services ( name ) )`,
       )
       .eq("operative_id", operativeId),
   ]);
@@ -73,6 +77,9 @@ export async function GET() {
   if (assignRes.error) {
     console.error("my-work assignments:", assignRes.error);
     return NextResponse.json({ error: assignRes.error.message }, { status: 400 });
+  }
+  if (acceptedQrRes.error) {
+    console.error("my-work accepted quotes:", acceptedQrRes.error);
   }
 
   const fromAssignments = assignRes.data || [];
