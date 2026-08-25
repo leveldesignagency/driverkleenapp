@@ -168,6 +168,32 @@ export default function ContractorPortalShell({ children }: { children: React.Re
       }
     }
 
+    // Merge admin-created + self-signup duplicate rows (same email) onto one operative.
+    const resolveRes = await fetch("/api/contractor/resolve-operative-identity", {
+      method: "POST",
+      credentials: "include",
+    });
+    const resolveJson = (await resolveRes.json().catch(() => ({}))) as {
+      operative?: Record<string, unknown>;
+      merged?: boolean;
+      merged_count?: number;
+    };
+    if (resolveRes.ok && resolveJson.operative) {
+      op = resolveJson.operative as typeof op;
+      if (resolveJson.merged) {
+        console.info(
+          "Merged duplicate contractor records:",
+          resolveJson.merged_count ?? 0,
+        );
+      }
+    }
+
+    if (!op) {
+      setError("Could not load your contractor profile.");
+      setLoading(false);
+      return;
+    }
+
     const row = op as Record<string, unknown>;
     if (!isAdminInvite) {
       isAdminInvite =

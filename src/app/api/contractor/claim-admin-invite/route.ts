@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
+import { resolveOperativeIdentity } from "@/lib/operative-identity";
 
 /**
  * Link the signed-in Google user to an existing admin-created operative
@@ -23,19 +24,18 @@ export async function POST() {
 
   const admin = createServiceRoleClient();
 
-  const { data: alreadyLinked } = await admin
-    .from("operatives")
-    .select("*")
-    .eq("user_id", user.id)
-    .maybeSingle();
-
-  if (alreadyLinked) {
+  const merged = await resolveOperativeIdentity(admin, user.id, user.email);
+  if (merged.operative) {
+    const op = merged.operative;
     return NextResponse.json({
       ok: true,
-      claimed: false,
-      already_linked: true,
-      operative: alreadyLinked,
-      admin_invite: String(alreadyLinked.onboarding_source || "") === "admin_invite",
+      claimed: merged.merged || !op.user_id,
+      already_linked: Boolean(op.user_id) && !merged.merged,
+      merged: merged.merged,
+      merged_count: merged.mergedCount,
+      operative: op,
+      admin_invite:
+        String(op.onboarding_source || "") === "admin_invite" || Boolean(op.admin_invited_at),
     });
   }
 
@@ -81,14 +81,14 @@ export async function POST() {
     .single();
 
   if (claimErr) {
-    // Race: another request linked first, or unique user_id conflict
-    const { data: retry } = await admin.from("operatives").select("*").eq("user_id", user.id).maybeSingle();
-    if (retry) {
+    const retry = await resolveOperativeIdentity(admin, user.id, user.email);
+    if (retry.operative) {
+      const op = retry.operative;
       return NextResponse.json({
         ok: true,
         claimed: true,
-        operative: retry,
-        admin_invite: String(retry.onboarding_source || "") === "admin_invite",
+        operative: op,
+        admin_invite: String(op.onboarding_source || "") === "admin_invite",
       });
     }
     console.error("claim-admin-invite update:", claimErr);
@@ -99,6 +99,7 @@ export async function POST() {
     ok: true,
     claimed: true,
     operative: claimed,
-    admin_invite: String(claimed?.onboarding_source || "") === "admin_invite" || Boolean(candidate.admin_invited_at),
+    admin_invite:
+      String(claimed?.onboarding_source || "") === "admin_invite" || Boolean(candidate.admin_invited_at),
   });
 }

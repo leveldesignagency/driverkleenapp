@@ -89,7 +89,7 @@ type AssignmentRow = {
 type Tab = "browse" | "quotes" | "assigned";
 
 export default function JobsDashboard() {
-  const { operativeId, isVerified } = useContractorPortal();
+  const { operativeId, isVerified, refresh } = useContractorPortal();
   const [tab, setTab] = useState<Tab>("browse");
   const [browseJobs, setBrowseJobs] = useState<BrowseJob[]>([]);
   const [filterInfo, setFilterInfo] = useState<{ base_postcode: string | null; radius_miles: number } | null>(null);
@@ -99,100 +99,40 @@ export default function JobsDashboard() {
   const [search, setSearch] = useState("");
 
   const loadQuotesAndAssigned = useCallback(async () => {
-    if (!operativeId) return;
-    const supabase = createClient();
-
-    const [qrRes, assignRes, acceptedJobsRes] = await Promise.all([
-      supabase
-        .from("quote_requests")
-        .select(
-          `id, status, initiated_by, deadline, message, sent_at,
-           jobs ( id, reference, postcode, preferred_date, status, services ( name ) ),
-           quote_responses ( price_pence, estimated_hours, sent_to_customer_at )`,
-        )
-        .eq("operative_id", operativeId)
-        .order("sent_at", { ascending: false }),
-      supabase
-        .from("job_assignments")
-        .select(
-          `id, assigned_at, completed_at,
-           jobs ( id, reference, postcode, preferred_date, status, services ( name ) )`,
-        )
-        .eq("operative_id", operativeId)
-        .order("assigned_at", { ascending: false }),
-      // Fallback: jobs accepted for this contractor even if assignment row is missing
-      supabase
-        .from("quote_requests")
-        .select("id, jobs!inner ( id, reference, postcode, preferred_date, status, services ( name ), accepted_quote_request_id )")
-        .eq("operative_id", operativeId),
-    ]);
-
-    if (qrRes.error) console.error("contractor quotes load:", qrRes.error);
-    if (assignRes.error) console.error("contractor assignments load:", assignRes.error);
-    if (acceptedJobsRes.error) console.error("contractor accepted jobs load:", acceptedJobsRes.error);
-
-    setQuotes((qrRes.data as unknown as QrRow[]) || []);
-
-    const fromAssignments = (assignRes.data as unknown as AssignmentRow[]) || [];
-    const assignedJobIds = new Set(
-      fromAssignments
-        .map((a) => {
-          const j = Array.isArray(a.jobs) ? a.jobs[0] : a.jobs;
-          return j?.id;
-        })
-        .filter(Boolean) as string[],
-    );
-
-    type AcceptedQr = {
-      id: string;
-      jobs:
-        | {
-            id: string;
-            reference: string;
-            postcode: string;
-            preferred_date?: string;
-            status?: string;
-            accepted_quote_request_id?: string | null;
-            services?: { name: string } | { name: string }[] | null;
-          }
-        | {
-            id: string;
-            reference: string;
-            postcode: string;
-            preferred_date?: string;
-            status?: string;
-            accepted_quote_request_id?: string | null;
-            services?: { name: string } | { name: string }[] | null;
-          }[]
-        | null;
+    const res = await fetch("/api/contractor/jobs/my-work", { credentials: "include" });
+    const json = (await res.json()) as {
+      quotes?: QrRow[];
+      assigned?: AssignmentRow[];
+      operative_id?: string | null;
+      merged?: boolean;
+      error?: string;
     };
 
-    const synthesized: AssignmentRow[] = [];
-    for (const row of (acceptedJobsRes.data as unknown as AcceptedQr[]) || []) {
-      const job = Array.isArray(row.jobs) ? row.jobs[0] : row.jobs;
-      if (!job?.id) continue;
-      if (job.accepted_quote_request_id !== row.id) continue;
-      if (assignedJobIds.has(job.id)) continue;
-      synthesized.push({
-        id: `accepted-${job.id}`,
-        assigned_at: job.preferred_date || new Date().toISOString(),
-        completed_at: null,
-        jobs: job,
-      });
-      assignedJobIds.add(job.id);
+    if (!res.ok) {
+      console.error("contractor my-work load:", json.error || res.status);
+      setQuotes([]);
+      setAssigned([]);
+      return;
     }
 
-    const merged = [...fromAssignments, ...synthesized];
-    setAssigned(merged);
+    const qrData = json.quotes || [];
+    const mergedAssigned = json.assigned || [];
+    setQuotes(qrData);
+    setAssigned(mergedAssigned);
+
+    if (json.merged) {
+      console.info("Contractor records merged on load");
+      void refresh();
+    }
 
     // Prefer Assigned / My quotes when the contractor already has work
     setTab((current) => {
       if (current !== "browse") return current;
-      if (merged.length > 0) return "assigned";
-      if ((qrRes.data || []).length > 0) return "quotes";
+      if (mergedAssigned.length > 0) return "assigned";
+      if (qrData.length > 0) return "quotes";
       return "browse";
     });
-  }, [operativeId]);
+  }, [refresh]);
 
   const loadBrowse = useCallback(async () => {
     const res = await fetch("/api/contractor/jobs/browse", { credentials: "include" });
@@ -208,9 +148,10 @@ export default function JobsDashboard() {
   }, []);
 
   useEffect(() => {
-    if (!isVerified || !operativeId) return;
     setLoading(true);
-    Promise.all([loadBrowse(), loadQuotesAndAssigned()]).finally(() => setLoading(false));
+    const loads: Promise<void>[] = [loadQuotesAndAssigned()];
+    if (isVerified && operativeId) loads.push(loadBrowse());
+    Promise.all(loads).finally(() => setLoading(false));
   }, [isVerified, operativeId, loadBrowse, loadQuotesAndAssigned]);
 
   const filteredBrowse = browseJobs.filter((j) => {

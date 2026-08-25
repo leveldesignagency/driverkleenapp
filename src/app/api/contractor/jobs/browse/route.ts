@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServiceRoleClient } from "@/lib/supabase/service-role";
+import { resolveOperativeIdentity } from "@/lib/operative-identity";
 import {
   distanceMiles,
   geocodeUkPostcode,
@@ -11,17 +13,16 @@ export async function GET() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!user?.email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { data: operative, error: opErr } = await supabase
-    .from("operatives")
-    .select("id, is_verified, service_areas, base_postcode, max_travel_radius_miles")
-    .eq("user_id", user.id)
-    .single();
+  const admin = createServiceRoleClient();
+  const { operative } = await resolveOperativeIdentity(admin, user.id, user.email);
 
-  if (opErr || !operative?.is_verified) {
+  if (!operative?.is_verified) {
     return NextResponse.json({ error: "Verified contractor account required" }, { status: 403 });
   }
+
+  const operativeId = String(operative.id);
 
   const basePostcode = String(operative.base_postcode || "").trim();
   const radius = operative.max_travel_radius_miles ?? 25;
@@ -47,7 +48,7 @@ export async function GET() {
   const { data: myServices } = await supabase
     .from("operative_services")
     .select("service_id")
-    .eq("operative_id", operative.id);
+    .eq("operative_id", operativeId);
 
   const serviceIds = new Set((myServices || []).map((s) => s.service_id));
 
