@@ -4,6 +4,24 @@
 
 @import "leaflet/dist/leaflet.css";
 
+/* Leaflet must fill its container; modals need explicit height on the wrapper. */
+.leaflet-container {
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  font-family: inherit;
+}
+
+.journey-map-host {
+  isolation: isolate;
+  position: relative;
+  overflow: hidden;
+}
+
+.journey-map-host .leaflet-container {
+  background: #e2e8f0;
+}
+
 @layer base {
   :root {
     --background: #ffffff;
