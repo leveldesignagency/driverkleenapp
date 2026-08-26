@@ -5,7 +5,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useContractorPortal } from "@/components/contractor/contractor-portal-context";
 import ContractorPageHeader from "@/components/contractor/ContractorPageHeader";
-import DayJourneyMap from "@/components/contractor/DayJourneyMap";
+import { DayMapPreview, DayJourneyFullView } from "@/components/contractor/DayJourneyMap";
 import {
   CalendarDays,
   ChevronLeft,
@@ -15,7 +15,7 @@ import {
   X,
 } from "lucide-react";
 
-type ViewMode = "week" | "month" | "journey";
+type ViewMode = "week" | "month";
 
 type ScheduleJob = {
   assignmentId: string;
@@ -44,8 +44,12 @@ function addDays(d: Date, n: number): Date {
   return x;
 }
 
+/** Local calendar day YYYY-MM-DD (avoid UTC shift from toISOString). */
 function formatDayKey(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 function formatDayLabel(d: Date, mode: ViewMode): string {
@@ -86,6 +90,7 @@ export default function ScheduleCalendar() {
   const [loading, setLoading] = useState(true);
   const [expandedDay, setExpandedDay] = useState<string | null>(null);
   const [modalJob, setModalJob] = useState<ScheduleJob | null>(null);
+  const [journeyDate, setJourneyDate] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!operativeId) return;
@@ -172,6 +177,7 @@ export default function ScheduleCalendar() {
     const map = new Map<string, ScheduleJob[]>();
     for (const job of jobs) {
       const key = job.preferredDate.slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) continue;
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(job);
     }
@@ -204,65 +210,61 @@ export default function ScheduleCalendar() {
     <div className="space-y-6">
       <ContractorPageHeader
         title="Schedule"
-        description="Assigned jobs by week or month, plus a day journey map ordered by job times."
+        description="Your assigned jobs by week or month. Expand a day for the route preview, then open full journey view on mobile."
       />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
-          {(["week", "month", "journey"] as ViewMode[]).map((v) => (
+          {(["week", "month"] as ViewMode[]).map((v) => (
             <button
               key={v}
               type="button"
               onClick={() => {
                 setView(v);
                 setExpandedDay(null);
-                if (v !== "journey") setAnchor(startOfDay(new Date()));
+                setAnchor(startOfDay(new Date()));
               }}
               className={`rounded-lg px-4 py-2 text-sm font-semibold capitalize transition ${
                 view === v ? "bg-brand-600 text-white shadow" : "text-slate-600 hover:bg-slate-50"
               }`}
             >
-              {v === "journey" ? "Journey map" : v}
+              {v}
             </button>
           ))}
         </div>
 
-        {view !== "journey" && (
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => shiftPeriod(-1)}
-              className="rounded-lg border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50"
-              aria-label="Previous period"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            <span className="min-w-[10rem] text-center text-sm font-semibold text-slate-800">{periodLabel}</span>
-            <button
-              type="button"
-              onClick={() => shiftPeriod(1)}
-              className="rounded-lg border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50"
-              aria-label="Next period"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setAnchor(startOfDay(new Date()));
-                setExpandedDay(formatDayKey(new Date()));
-              }}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-brand-700 hover:bg-brand-50"
-            >
-              Today
-            </button>
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => shiftPeriod(-1)}
+            className="rounded-lg border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50"
+            aria-label="Previous period"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <span className="min-w-[10rem] text-center text-sm font-semibold text-slate-800">{periodLabel}</span>
+          <button
+            type="button"
+            onClick={() => shiftPeriod(1)}
+            className="rounded-lg border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50"
+            aria-label="Next period"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setAnchor(startOfDay(new Date()));
+              setExpandedDay(formatDayKey(new Date()));
+            }}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-brand-700 hover:bg-brand-50"
+          >
+            Today
+          </button>
+        </div>
       </div>
 
-      {view === "journey" ? (
-        <DayJourneyMap />
-      ) : loading ? (
+      {loading ? (
         <div className="flex justify-center py-16">
           <Loader2 className="h-8 w-8 animate-spin text-brand-600" />
         </div>
@@ -300,43 +302,50 @@ export default function ScheduleCalendar() {
                   </span>
                 </button>
 
-                {dayJobs.length > 0 && (
-                  <div
-                    className={`grid gap-2 border-t border-slate-100 px-4 py-3 transition-all ${
-                      isExpanded ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
-                    }`}
-                  >
-                    {dayJobs.map((job) => {
-                      const badge = statusBadge(job.status);
-                      return (
-                        <button
-                          key={job.assignmentId}
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setModalJob(job);
-                          }}
-                          className="rounded-xl border border-slate-200 bg-gradient-to-br from-white to-slate-50/80 p-3 text-left shadow-sm transition hover:border-brand-300 hover:shadow-md"
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <p className="text-xs font-bold text-slate-900">{job.reference}</p>
-                            <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${badge.cls}`}>
-                              {badge.label}
-                            </span>
-                          </div>
-                          <p className="mt-1 text-xs font-medium text-brand-800">{job.serviceName}</p>
-                          <p className="mt-0.5 text-[11px] text-slate-500">
-                            {formatTime(job.preferredTime)} · {job.postcode}
-                          </p>
-                        </button>
-                      );
-                    })}
+                {isExpanded && (
+                  <div className="space-y-3 border-t border-slate-100 px-4 py-3">
+                    {dayJobs.length > 0 && (
+                      <DayMapPreview date={key} onOpenFull={() => setJourneyDate(key)} />
+                    )}
+
+                    {dayJobs.length > 0 ? (
+                      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                        {dayJobs.map((job) => {
+                          const badge = statusBadge(job.status);
+                          return (
+                            <button
+                              key={job.assignmentId}
+                              type="button"
+                              onClick={() => setModalJob(job)}
+                              className="rounded-xl border border-slate-200 bg-gradient-to-br from-white to-slate-50/80 p-3 text-left shadow-sm transition hover:border-brand-300 hover:shadow-md"
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <p className="text-xs font-bold text-slate-900">{job.reference}</p>
+                                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${badge.cls}`}>
+                                  {badge.label}
+                                </span>
+                              </div>
+                              <p className="mt-1 text-xs font-medium text-brand-800">{job.serviceName}</p>
+                              <p className="mt-0.5 text-[11px] text-slate-500">
+                                {formatTime(job.preferredTime)} · {job.postcode}
+                              </p>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-center text-sm text-slate-400">Nothing scheduled this day.</p>
+                    )}
                   </div>
                 )}
               </div>
             );
           })}
         </div>
+      )}
+
+      {journeyDate && (
+        <DayJourneyFullView date={journeyDate} onClose={() => setJourneyDate(null)} />
       )}
 
       {modalJob && (

@@ -79,7 +79,10 @@ export async function runContractorFieldAction(
     if (j.operative_arrived_at) {
       return { ok: true };
     }
-    await supabase.from("jobs").update({ operative_arrived_at: now, status: "in_progress" }).eq("id", j.id);
+    await supabase
+      .from("jobs")
+      .update({ operative_arrived_at: now, actual_start: now, status: "in_progress" })
+      .eq("id", j.id);
     return { ok: true };
   }
 

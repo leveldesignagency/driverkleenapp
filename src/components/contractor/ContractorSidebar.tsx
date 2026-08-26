@@ -26,16 +26,17 @@ function getMarketingHomeUrl(): string {
   return "https://www.kleenapp.co.uk";
 }
 
-const NAV_BASE = [
-  { href: "/contractor", label: "Overview", icon: LayoutDashboard },
+const NAV_WORK = [
+  { href: "/contractor", label: "Overview", icon: LayoutDashboard, verifiedOnly: false },
+  { href: "/contractor/jobs", label: "My work", icon: Briefcase, verifiedOnly: true },
+  { href: "/contractor/schedule", label: "Schedule", icon: CalendarDays, verifiedOnly: true },
+  { href: "/contractor/disputes", label: "Disputes", icon: Scale, verifiedOnly: true },
+];
+
+const NAV_ACCOUNT = [
   { href: "/contractor/profile", label: "Company & profile", icon: UserRound },
   { href: "/contractor/services", label: "Services & contracts", icon: FileText },
   { href: "/contractor/payouts", label: "Bank details", icon: Landmark },
-];
-const NAV_VERIFIED = [
-  { href: "/contractor/schedule", label: "Schedule", icon: CalendarDays },
-  { href: "/contractor/jobs", label: "My work", icon: Briefcase },
-  { href: "/contractor/disputes", label: "Disputes", icon: Scale },
 ];
 
 type Props = {
@@ -43,12 +44,47 @@ type Props = {
   onClose?: () => void;
 };
 
+function NavLink({
+  href,
+  label,
+  icon: Icon,
+  pathname,
+  onNavigate,
+}: {
+  href: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  pathname: string;
+  onNavigate: () => void;
+}) {
+  const showActive =
+    href === "/contractor"
+      ? pathname === "/contractor" || pathname === "/contractor/"
+      : pathname === href || pathname.startsWith(`${href}/`);
+
+  return (
+    <Link
+      href={href}
+      onClick={onNavigate}
+      className={`flex min-h-[44px] items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
+        showActive
+          ? "bg-brand-600 text-white shadow-sm shadow-brand-600/20"
+          : "text-slate-600 hover:bg-white hover:text-slate-900 hover:shadow-sm"
+      }`}
+    >
+      <Icon className={`h-4 w-4 shrink-0 ${showActive ? "opacity-100" : "opacity-70"}`} />
+      {label}
+    </Link>
+  );
+}
+
 export default function ContractorSidebar({ mobileOpen = false, onClose }: Props) {
   const pathname = usePathname();
   const router = useRouter();
   const { isVerified, rejectionMessage } = useContractorPortal();
-  const NAV = [...NAV_BASE, ...(isVerified ? NAV_VERIFIED : [])];
   const findActive = pathname === "/contractor/find" || pathname.startsWith("/contractor/find/");
+
+  const workItems = NAV_WORK.filter((item) => !item.verifiedOnly || isVerified);
 
   const signOut = async () => {
     onClose?.();
@@ -110,12 +146,12 @@ export default function ContractorSidebar({ mobileOpen = false, onClose }: Props
           )}
         </div>
 
-        <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-3">
+        <nav className="flex flex-1 flex-col gap-4 overflow-y-auto p-3">
           {isVerified && (
             <Link
               href="/contractor/find"
               onClick={handleNav}
-              className={`mb-2 flex min-h-[48px] items-center justify-center gap-2 rounded-xl px-3 py-3 text-sm font-bold tracking-tight transition-colors ${
+              className={`flex min-h-[48px] items-center justify-center gap-2 rounded-xl px-3 py-3 text-sm font-bold tracking-tight transition-colors ${
                 findActive
                   ? "bg-brand-600 text-white"
                   : "bg-brand-600/90 text-white hover:bg-brand-600"
@@ -126,27 +162,37 @@ export default function ContractorSidebar({ mobileOpen = false, onClose }: Props
             </Link>
           )}
 
-          {NAV.map(({ href, label, icon: Icon }) => {
-            const showActive =
-              href === "/contractor"
-                ? pathname === "/contractor" || pathname === "/contractor/"
-                : pathname === href || pathname.startsWith(`${href}/`);
-            return (
-              <Link
-                key={href}
-                href={href}
-                onClick={handleNav}
-                className={`flex min-h-[44px] items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
-                  showActive
-                    ? "bg-brand-600 text-white shadow-sm shadow-brand-600/20"
-                    : "text-slate-600 hover:bg-white hover:text-slate-900 hover:shadow-sm"
-                }`}
-              >
-                <Icon className={`h-4 w-4 shrink-0 ${showActive ? "opacity-100" : "opacity-70"}`} />
-                {label}
-              </Link>
-            );
-          })}
+          <div className="space-y-1">
+            <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+              Work
+            </p>
+            {workItems.map((item) => (
+              <NavLink
+                key={item.href}
+                href={item.href}
+                label={item.label}
+                icon={item.icon}
+                pathname={pathname}
+                onNavigate={handleNav}
+              />
+            ))}
+          </div>
+
+          <div className="space-y-1 border-t border-slate-100 pt-4">
+            <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+              Account
+            </p>
+            {NAV_ACCOUNT.map((item) => (
+              <NavLink
+                key={item.href}
+                href={item.href}
+                label={item.label}
+                icon={item.icon}
+                pathname={pathname}
+                onNavigate={handleNav}
+              />
+            ))}
+          </div>
         </nav>
 
         <div className="border-t border-slate-100 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
