@@ -216,7 +216,7 @@ export function DayMapPreview({
 
   if (loading) {
     return (
-      <div className="flex h-36 items-center justify-center rounded-xl border border-slate-200 bg-slate-50">
+      <div className="flex h-28 w-full max-w-xs items-center justify-center rounded-lg border border-slate-200 bg-slate-50">
         <Loader2 className="h-5 w-5 animate-spin text-brand-600" />
       </div>
     );
@@ -224,46 +224,46 @@ export function DayMapPreview({
 
   if (error) {
     return (
-      <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div>
+      <div className="max-w-xs rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div>
     );
   }
 
   if (!data?.stops.length) {
     return (
-      <div className="space-y-2">
-        <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-center text-xs text-slate-500">
-          No mapped stops for {date}. If jobs show below, open full journey view anyway.
+      <div className="max-w-xs space-y-2">
+        <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-3 text-center text-[11px] leading-snug text-slate-500">
+          No mapped route yet.
         </div>
         <button
           type="button"
           onClick={onOpenFull}
-          className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-500"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-500"
         >
-          <Maximize2 className="h-4 w-4" />
-          Full journey view
+          <Maximize2 className="h-3.5 w-3.5" />
+          Journey view
         </button>
       </div>
     );
   }
 
   return (
-    <div className="space-y-2">
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
-        <div ref={mapEl} className="h-36 w-full pointer-events-none" />
+    <div className="max-w-xs space-y-2">
+      <div className="overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
+        <div ref={mapEl} className="h-28 w-full pointer-events-none" />
       </div>
       <button
         type="button"
         onClick={onOpenFull}
-        className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-500"
+        className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-500"
       >
-        <Maximize2 className="h-4 w-4" />
-        Full journey view
+        <Maximize2 className="h-3.5 w-3.5" />
+        Journey view
       </button>
     </div>
   );
 }
 
-/** Full-screen / sheet journey view for mobile route review + job snapshots. */
+/** Journey view — full-screen on mobile, contained modal on desktop. */
 export function DayJourneyFullView({
   date,
   onClose,
@@ -277,100 +277,109 @@ export function DayJourneyFullView({
   const onStopClick = useCallback((s: JourneyStop) => setSelected(s), []);
   useLeafletMap(mapEl, data, true, onStopClick);
 
+  const dateLabel = new Date(date + "T12:00:00").toLocaleDateString("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
+
   return (
-    <div className="fixed inset-0 z-[60] flex flex-col bg-white">
-      <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 safe-pt">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-brand-700">Journey</p>
-          <h2 className="text-lg font-bold text-slate-900">
-            {new Date(date + "T12:00:00").toLocaleDateString("en-GB", {
-              weekday: "short",
-              day: "numeric",
-              month: "short",
-            })}
-          </h2>
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
-          aria-label="Close"
-        >
-          <X className="h-5 w-5" />
-        </button>
-      </div>
-
-      {loading ? (
-        <div className="flex flex-1 items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-brand-600" />
-        </div>
-      ) : error ? (
-        <div className="m-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</div>
-      ) : (
-        <>
-          <div className="relative h-[42vh] min-h-[220px] shrink-0 border-b border-slate-200">
-            <div ref={mapEl} className="absolute inset-0" />
-            <p className="pointer-events-none absolute bottom-2 left-2 rounded-lg bg-white/90 px-2 py-1 text-[10px] font-medium text-slate-600 shadow">
-              Tap a pin for job snapshot
-            </p>
+    <div
+      className="fixed inset-0 z-[60] flex items-end justify-center bg-slate-900/40 sm:items-center sm:p-4"
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+    >
+      <div
+        className="relative flex h-[100dvh] w-full flex-col overflow-hidden bg-white sm:h-auto sm:max-h-[min(640px,90vh)] sm:max-w-3xl sm:rounded-2xl sm:shadow-xl lg:max-w-4xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 sm:px-5">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-brand-700">Journey</p>
+            <h2 className="text-base font-bold text-slate-900 sm:text-lg">{dateLabel}</h2>
           </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+            aria-label="Close"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
 
-          <div className="flex-1 overflow-y-auto px-4 py-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
-            <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-slate-500">
-              <Route className="h-3.5 w-3.5 text-brand-600" />
-              Stops in order
+        {loading ? (
+          <div className="flex flex-1 items-center justify-center py-16">
+            <Loader2 className="h-8 w-8 animate-spin text-brand-600" />
+          </div>
+        ) : error ? (
+          <div className="m-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</div>
+        ) : (
+          <div className="flex min-h-0 flex-1 flex-col lg:grid lg:grid-cols-2">
+            <div className="relative h-44 shrink-0 border-b border-slate-200 sm:h-52 lg:h-auto lg:min-h-[280px] lg:border-b-0 lg:border-r">
+              <div ref={mapEl} className="absolute inset-0" />
+              <p className="pointer-events-none absolute bottom-2 left-2 rounded-md bg-white/90 px-2 py-1 text-[10px] font-medium text-slate-600 shadow">
+                Click a pin for details
+              </p>
             </div>
-            {!data?.stops.length ? (
-              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
-                No assigned or quoted jobs on {date}. If the calendar shows jobs that day, try
-                refreshing — or check the job&apos;s preferred date matches this day.
-              </div>
-            ) : (
-              <ol className="space-y-2">
-                {data?.base && (
-                  <li className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm">
-                    <p className="text-[10px] font-semibold uppercase text-slate-500">Start</p>
-                    <p className="font-medium text-slate-900">Base · {data.base.postcode}</p>
-                  </li>
-                )}
-                {(data?.stops || []).map((s, i) => (
-                  <li key={s.jobId}>
-                    <button
-                      type="button"
-                      onClick={() => setSelected(s)}
-                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left text-sm shadow-sm hover:border-brand-300"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <p className="text-xs font-semibold text-brand-700">
-                            Stop {i + 1} · {fmtTime(s.preferred_time)}
-                          </p>
-                          <p className="font-semibold text-slate-900">{s.reference}</p>
-                          <p className="text-xs text-slate-500">
-                            {s.service_name} · {s.postcode}
-                          </p>
-                        </div>
-                        <FieldChip stop={s} />
-                      </div>
-                    </button>
-                  </li>
-                ))}
-              </ol>
-            )}
-          </div>
-        </>
-      )}
 
-      {selected && (
-        <JobSnapshotSheet
-          stop={selected}
-          onClose={() => setSelected(null)}
-          onUpdated={() => {
-            reload();
-            setSelected(null);
-          }}
-        />
-      )}
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <div className="flex shrink-0 items-center gap-2 border-b border-slate-100 px-4 py-2 text-xs font-semibold text-slate-500 sm:px-5">
+                <Route className="h-3.5 w-3.5 text-brand-600" />
+                Stops in order
+              </div>
+              <div className="flex-1 overflow-y-auto px-4 py-2 sm:px-5 sm:py-3">
+                {!data?.stops.length ? (
+                  <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                    No jobs on {dateLabel}.
+                  </div>
+                ) : (
+                  <ol className="divide-y divide-slate-100">
+                    {data?.base && (
+                      <li className="py-2.5 text-sm">
+                        <p className="text-[10px] font-semibold uppercase text-slate-500">Start</p>
+                        <p className="font-medium text-slate-900">Base · {data.base.postcode}</p>
+                      </li>
+                    )}
+                    {(data?.stops || []).map((s, i) => (
+                      <li key={s.jobId}>
+                        <button
+                          type="button"
+                          onClick={() => setSelected(s)}
+                          className="flex w-full items-start justify-between gap-2 py-2.5 text-left text-sm hover:bg-slate-50/80"
+                        >
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold text-brand-700">
+                              Stop {i + 1} · {fmtTime(s.preferred_time)}
+                            </p>
+                            <p className="font-semibold text-slate-900">{s.reference}</p>
+                            <p className="truncate text-xs text-slate-500">
+                              {s.service_name} · {s.postcode}
+                            </p>
+                          </div>
+                          <FieldChip stop={s} />
+                        </button>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {selected && (
+          <JobSnapshotSheet
+            stop={selected}
+            onClose={() => setSelected(null)}
+            onUpdated={() => {
+              reload();
+              setSelected(null);
+            }}
+          />
+        )}
+      </div>
     </div>
   );
 }
@@ -428,8 +437,9 @@ function JobSnapshotSheet({
   };
 
   return (
-    <div className="absolute inset-x-0 bottom-0 z-[70] max-h-[70vh] overflow-y-auto rounded-t-2xl border border-slate-200 bg-white p-5 shadow-2xl pb-[max(1.25rem,env(safe-area-inset-bottom))]">
-      <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-200" />
+    <div className="absolute inset-0 z-[70] flex items-end justify-center bg-slate-900/20 sm:items-center sm:p-4">
+      <div className="max-h-[85vh] w-full overflow-y-auto rounded-t-2xl border border-slate-200 bg-white p-5 shadow-2xl pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:max-w-md sm:rounded-2xl">
+      <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-200 sm:hidden" />
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xs font-semibold text-brand-700">{fmtTime(stop.preferred_time)}</p>
@@ -475,7 +485,7 @@ function JobSnapshotSheet({
               type="button"
               disabled={!!busy}
               onClick={() => runField("en_route")}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-amber-600 py-3 text-sm font-semibold text-white hover:bg-amber-500 disabled:opacity-50"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-amber-600 py-2.5 text-sm font-semibold text-white hover:bg-amber-500 disabled:opacity-50"
             >
               {busy === "en_route" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Navigation className="h-4 w-4" />}
               I&apos;m on the way
@@ -486,7 +496,7 @@ function JobSnapshotSheet({
               type="button"
               disabled={!!busy}
               onClick={() => runField("arrived")}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-cyan-600 py-3 text-sm font-semibold text-white hover:bg-cyan-500 disabled:opacity-50"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-cyan-600 py-2.5 text-sm font-semibold text-white hover:bg-cyan-500 disabled:opacity-50"
             >
               {busy === "arrived" ? <Loader2 className="h-4 w-4 animate-spin" /> : <MapPin className="h-4 w-4" />}
               I&apos;ve arrived
@@ -497,7 +507,7 @@ function JobSnapshotSheet({
               type="button"
               disabled={!!busy}
               onClick={() => runField("complete")}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 py-3 text-sm font-semibold text-white hover:bg-brand-500 disabled:opacity-50"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-500 disabled:opacity-50"
             >
               {busy === "complete" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
               Log job complete
@@ -510,7 +520,7 @@ function JobSnapshotSheet({
           )}
           <Link
             href={`/contractor/jobs/${stop.jobId}`}
-            className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
           >
             <ClipboardList className="h-4 w-4" />
             Full job details &amp; notes
@@ -518,17 +528,18 @@ function JobSnapshotSheet({
         </div>
       ) : (
         <div className="mt-5 space-y-2">
-          <p className="rounded-xl bg-violet-50 px-3 py-2 text-xs text-violet-900">
+          <p className="rounded-lg bg-violet-50 px-3 py-2 text-xs text-violet-900">
             Quoted only — field updates unlock once the customer accepts and you&apos;re assigned.
           </p>
           <Link
             href={`/contractor/jobs/${stop.jobId}`}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-500"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-500"
           >
             View job
           </Link>
         </div>
       )}
+      </div>
     </div>
   );
 }

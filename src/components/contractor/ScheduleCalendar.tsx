@@ -210,7 +210,7 @@ export default function ScheduleCalendar() {
     <div className="space-y-6">
       <ContractorPageHeader
         title="Schedule"
-        description="Your assigned jobs by week or month. Expand a day for the route preview, then open full journey view on mobile."
+        description="Your assigned jobs by week or month. Expand a day for a route preview and journey view."
       />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -303,35 +303,40 @@ export default function ScheduleCalendar() {
                 </button>
 
                 {isExpanded && (
-                  <div className="space-y-3 border-t border-slate-100 px-4 py-3">
-                    {dayJobs.length > 0 && (
-                      <DayMapPreview date={key} onOpenFull={() => setJourneyDate(key)} />
-                    )}
-
+                  <div className="border-t border-slate-100 px-4 py-3">
                     {dayJobs.length > 0 ? (
-                      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                        {dayJobs.map((job) => {
-                          const badge = statusBadge(job.status);
-                          return (
-                            <button
-                              key={job.assignmentId}
-                              type="button"
-                              onClick={() => setModalJob(job)}
-                              className="rounded-xl border border-slate-200 bg-gradient-to-br from-white to-slate-50/80 p-3 text-left shadow-sm transition hover:border-brand-300 hover:shadow-md"
-                            >
-                              <div className="flex items-start justify-between gap-2">
-                                <p className="text-xs font-bold text-slate-900">{job.reference}</p>
-                                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${badge.cls}`}>
-                                  {badge.label}
-                                </span>
-                              </div>
-                              <p className="mt-1 text-xs font-medium text-brand-800">{job.serviceName}</p>
-                              <p className="mt-0.5 text-[11px] text-slate-500">
-                                {formatTime(job.preferredTime)} · {job.postcode}
-                              </p>
-                            </button>
-                          );
-                        })}
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+                        <div className="shrink-0 lg:w-52">
+                          <DayMapPreview date={key} onOpenFull={() => setJourneyDate(key)} />
+                        </div>
+                        <ul className="min-w-0 flex-1 divide-y divide-slate-100 border-t border-slate-100 lg:border-t-0">
+                          {dayJobs.map((job) => {
+                            const badge = statusBadge(job.status);
+                            return (
+                              <li key={job.assignmentId}>
+                                <button
+                                  type="button"
+                                  onClick={() => setModalJob(job)}
+                                  className="flex w-full items-center justify-between gap-3 py-2.5 text-left transition hover:bg-slate-50/80"
+                                >
+                                  <div className="min-w-0">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <p className="text-sm font-semibold text-slate-900">{job.reference}</p>
+                                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${badge.cls}`}>
+                                        {badge.label}
+                                      </span>
+                                    </div>
+                                    <p className="text-xs text-brand-700">{job.serviceName}</p>
+                                    <p className="text-[11px] text-slate-500">
+                                      {formatTime(job.preferredTime)} · {job.postcode}
+                                    </p>
+                                  </div>
+                                  <ExternalLink className="h-4 w-4 shrink-0 text-slate-300" />
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
                       </div>
                     ) : (
                       <p className="text-center text-sm text-slate-400">Nothing scheduled this day.</p>
