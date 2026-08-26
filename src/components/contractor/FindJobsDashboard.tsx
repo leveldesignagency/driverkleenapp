@@ -13,7 +13,6 @@ import {
   Send,
   ExternalLink,
   RefreshCw,
-  SlidersHorizontal,
   Check,
 } from "lucide-react";
 
@@ -68,7 +67,6 @@ export default function FindJobsDashboard() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
-  // Interactive search filters (defaults filled from profile on first load)
   const [radius, setRadius] = useState(25);
   const [basePostcode, setBasePostcode] = useState("");
   const [ignoreAreas, setIgnoreAreas] = useState(false);
@@ -129,7 +127,6 @@ export default function FindJobsDashboard() {
     setIgnoreAreas(false);
     setOnlyMyServices(false);
     setLoading(true);
-    // load uses state — set then fetch with explicit params
     const params = new URLSearchParams();
     if (d?.base_postcode) params.set("base", d.base_postcode);
     params.set("radius", String(d?.radius_miles || 25));
@@ -177,7 +174,7 @@ export default function FindJobsDashboard() {
             type="button"
             onClick={applyFilters}
             disabled={loading}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
           >
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
             Refresh
@@ -185,74 +182,68 @@ export default function FindJobsDashboard() {
         }
       />
 
-      {/* Interactive filters */}
-      <div className="mb-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="mb-4 flex items-center gap-2">
-          <SlidersHorizontal className="h-4 w-4 text-brand-600" />
-          <p className="text-sm font-semibold text-slate-900">Search filters</p>
-          <span className="text-xs text-slate-400">
-            Defaults from your profile — change them for this search only
-          </span>
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <label className="block text-xs font-medium text-slate-600">
-            Search from postcode
+      {/* Filters — stacked full width, Upwork-style */}
+      <div className="mb-6 space-y-4 border-b border-slate-200 pb-6">
+        <label className="block">
+          <span className="mb-1.5 block text-xs font-medium text-slate-600">Search from postcode</span>
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
               value={basePostcode}
               onChange={(e) => setBasePostcode(e.target.value.toUpperCase())}
               placeholder="e.g. SW1A 1AA"
-              className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+              className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
             />
-          </label>
-
-          <label className="block text-xs font-medium text-slate-600 sm:col-span-1">
-            Distance: <span className="font-semibold text-slate-900">{radius} miles</span>
-            <input
-              type="range"
-              min={5}
-              max={100}
-              step={5}
-              value={radius}
-              onChange={(e) => setRadius(Number(e.target.value))}
-              className="mt-3 w-full accent-brand-600"
-            />
-            <div className="mt-1 flex justify-between text-[10px] text-slate-400">
-              <span>5 mi</span>
-              <span>Profile default: {filterInfo?.profile_defaults?.radius_miles ?? "—"} mi</span>
-              <span>100 mi</span>
-            </div>
-          </label>
-
-          <div className="flex flex-col justify-end gap-2 min-h-[4.5rem]">
-            <FilterCheck
-              checked={ignoreAreas}
-              onChange={setIgnoreAreas}
-              label="Ignore saved service areas for this search"
-            />
-            <FilterCheck
-              checked={onlyMyServices}
-              onChange={setOnlyMyServices}
-              label="Only jobs matching my linked services"
-            />
-            <p
-              className={`min-h-[1rem] text-[11px] text-slate-400 ${
-                !ignoreAreas && (filterInfo?.profile_defaults?.service_areas?.length ?? 0) > 0
-                  ? "visible"
-                  : "invisible"
-              }`}
-            >
-              Areas: {filterInfo?.profile_defaults?.service_areas?.join(", ") || "—"}
-            </p>
           </div>
+        </label>
+
+        <label className="block">
+          <span className="mb-1.5 block text-xs font-medium text-slate-600">
+            Distance: <span className="font-semibold text-slate-900">{radius} miles</span>
+            <span className="ml-2 font-normal text-slate-400">
+              (profile default: {filterInfo?.profile_defaults?.radius_miles ?? "—"} mi)
+            </span>
+          </span>
+          <input
+            type="range"
+            min={5}
+            max={100}
+            step={5}
+            value={radius}
+            onChange={(e) => setRadius(Number(e.target.value))}
+            className="w-full accent-brand-600"
+          />
+          <div className="mt-1 flex justify-between text-[10px] text-slate-400">
+            <span>5 mi</span>
+            <span>100 mi</span>
+          </div>
+        </label>
+
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+          <FilterCheck
+            checked={ignoreAreas}
+            onChange={setIgnoreAreas}
+            label="Ignore saved service areas for this search"
+          />
+          <FilterCheck
+            checked={onlyMyServices}
+            onChange={setOnlyMyServices}
+            label="Only jobs matching my linked services"
+          />
         </div>
 
-        <div className="mt-4 flex flex-wrap gap-2">
+        {!ignoreAreas && (filterInfo?.profile_defaults?.service_areas?.length ?? 0) > 0 && (
+          <p className="text-[11px] text-slate-400">
+            Saved areas: {filterInfo?.profile_defaults?.service_areas?.join(", ")}
+          </p>
+        )}
+
+        <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
             onClick={applyFilters}
             disabled={loading}
-            className="rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-500 disabled:opacity-50"
+            className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-500 disabled:opacity-50"
           >
             {loading ? "Searching…" : "Apply filters"}
           </button>
@@ -260,31 +251,31 @@ export default function FindJobsDashboard() {
             type="button"
             onClick={resetFilters}
             disabled={loading}
-            className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+            className="text-sm font-medium text-slate-600 hover:text-slate-900 disabled:opacity-50"
           >
             Reset to profile defaults
           </button>
-          <Link href="/contractor/profile" className="px-2 py-2.5 text-sm font-medium text-brand-600 hover:text-brand-700">
+          <Link href="/contractor/profile" className="text-sm font-medium text-brand-600 hover:text-brand-700">
             Edit profile defaults →
           </Link>
         </div>
       </div>
 
-      <div className="relative mb-5">
+      <div className="relative mb-4">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Filter results by reference, postcode, service…"
-          className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-4 text-sm shadow-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
+          className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-4 text-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
         />
       </div>
 
       {error && (
-        <div className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</div>
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</div>
       )}
 
-      <p className="mb-3 text-xs text-slate-500">
+      <p className="mb-4 text-xs text-slate-500">
         Showing {filtered.length} job{filtered.length === 1 ? "" : "s"}
         {filterInfo?.base_postcode ? ` within ${filterInfo.radius_miles} mi of ${filterInfo.base_postcode}` : ""}
         {typeof filterInfo?.linked_services === "number"
@@ -296,7 +287,7 @@ export default function FindJobsDashboard() {
       </p>
 
       {filtered.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-slate-200 bg-white/70 px-6 py-14 text-center">
+        <div className="border-t border-slate-200 py-14 text-center">
           <Briefcase className="mx-auto h-10 w-10 text-slate-300" />
           <p className="mt-3 font-medium text-slate-800">No open jobs to show</p>
           <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">
@@ -313,40 +304,31 @@ export default function FindJobsDashboard() {
           <div className="mt-5 flex flex-wrap justify-center gap-3">
             <Link
               href="/contractor/services"
-              className="rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-500"
+              className="rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-500"
             >
               Services &amp; contracts
             </Link>
             <Link
               href="/contractor/jobs"
-              className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              className="rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
             >
               My work
             </Link>
           </div>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-          <div className="hidden border-b border-slate-100 bg-slate-50/80 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500 sm:grid sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_5.5rem_8.5rem] sm:gap-3 lg:px-5">
-            <span>Job</span>
-            <span>Location</span>
-            <span>When</span>
-            <span className="text-right">Distance</span>
-            <span className="text-right">Action</span>
-          </div>
-          <ul className="divide-y divide-slate-100">
-            {filtered.map((job) => (
-              <JobRow
-                key={job.id}
-                job={job}
-                onApplied={() => {
-                  load();
-                  router.push("/contractor/jobs");
-                }}
-              />
-            ))}
-          </ul>
-        </div>
+        <ul className="divide-y divide-slate-200 border-t border-slate-200">
+          {filtered.map((job) => (
+            <JobRow
+              key={job.id}
+              job={job}
+              onApplied={() => {
+                load();
+                router.push("/contractor/jobs");
+              }}
+            />
+          ))}
+        </ul>
       )}
     </div>
   );
@@ -368,10 +350,10 @@ function FilterCheck({
       aria-checked={checked}
       aria-label={label}
       onClick={() => onChange(!checked)}
-      className="flex w-full items-start gap-2.5 rounded-lg px-0.5 py-0.5 text-left text-xs text-slate-600 outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
+      className="inline-flex shrink-0 items-center gap-2 text-left text-xs text-slate-600 outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
     >
       <span
-        className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
+        className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
           checked
             ? "border-brand-600 bg-brand-600 text-white"
             : "border-slate-300 bg-white text-transparent"
@@ -380,7 +362,7 @@ function FilterCheck({
       >
         <Check className="h-3 w-3" strokeWidth={3} />
       </span>
-      <span className="min-w-0 leading-snug">{label}</span>
+      <span className="whitespace-nowrap">{label}</span>
     </button>
   );
 }
@@ -428,55 +410,65 @@ function JobRow({ job, onApplied }: { job: BrowseJob; onApplied: () => void }) {
     : "Date flexible";
 
   const needsService = job.matches_your_services === false;
+  const locationLabel = [job.postcode, job.city].filter(Boolean).join(" · ");
+  const detailParts = [
+    whenLabel,
+    job.distance_miles != null ? `${job.distance_miles} mi away` : null,
+    job.quantity != null ? `${job.quantity} rooms/units` : null,
+    job.cleaning_type ? job.cleaning_type.replace(/_/g, " ") : null,
+  ].filter(Boolean);
 
   return (
-    <li className="bg-white">
-      <div className="flex flex-col gap-3 px-4 py-3.5 sm:grid sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_5.5rem_8.5rem] sm:items-center sm:gap-3 lg:px-5">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="truncate text-sm font-semibold text-slate-900">{job.reference}</p>
+    <li className="py-5">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <p className="text-xs text-slate-500">
+            {job.reference}
+            {job.distance_miles != null && ` · ${job.distance_miles} mi`}
+          </p>
+
+          <h3 className="mt-1 text-base font-semibold text-slate-900 hover:text-brand-700">
+            {job.service_name}
+          </h3>
+
+          <p className="mt-1 text-xs text-slate-500">{detailParts.join(" · ")}</p>
+
+          {job.notes && (
+            <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-slate-600">{job.notes}</p>
+          )}
+
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+              <MapPin className="h-3 w-3" />
+              {locationLabel}
+            </span>
             {needsService && (
-              <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">
+              <span className="rounded bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800">
                 Service not linked
               </span>
             )}
+            <a
+              href={`https://www.openstreetmap.org/search?query=${encodeURIComponent(job.postcode)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-[11px] font-medium text-brand-600 hover:text-brand-700"
+            >
+              Map <ExternalLink className="h-3 w-3" />
+            </a>
           </div>
-          <p className="truncate text-xs text-brand-700">{job.service_name}</p>
-          {job.quantity != null && (
-            <p className="mt-0.5 text-[11px] text-slate-400">{job.quantity} rooms/units</p>
+
+          {needsService && (
+            <p className="mt-2 text-xs text-amber-800">
+              Link <strong>{job.service_name}</strong> under Services &amp; contracts before you can bid.
+            </p>
           )}
         </div>
 
-        <div className="min-w-0 text-xs text-slate-600">
-          <p className="inline-flex items-center gap-1 truncate">
-            <MapPin className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-            {job.postcode}
-            {job.city ? ` · ${job.city}` : ""}
-          </p>
-          <a
-            href={`https://www.openstreetmap.org/search?query=${encodeURIComponent(job.postcode)}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-medium text-brand-600 hover:text-brand-700"
-          >
-            Map <ExternalLink className="h-3 w-3" />
-          </a>
-        </div>
-
-        <div className="min-w-0 text-xs text-slate-600">
-          <p>{whenLabel}</p>
-          {job.notes && <p className="mt-0.5 line-clamp-1 text-[11px] text-slate-400">{job.notes}</p>}
-        </div>
-
-        <div className="text-left text-xs font-semibold text-slate-700 sm:text-right">
-          {job.distance_miles != null ? `${job.distance_miles} mi` : "—"}
-        </div>
-
-        <div className="flex sm:justify-end">
+        <div className="shrink-0 pt-1">
           {needsService ? (
             <Link
               href="/contractor/services"
-              className="inline-flex w-full items-center justify-center rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900 hover:bg-amber-100 sm:w-auto"
+              className="inline-flex items-center justify-center rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-900 hover:bg-amber-100"
             >
               Add service
             </Link>
@@ -484,7 +476,7 @@ function JobRow({ job, onApplied }: { job: BrowseJob; onApplied: () => void }) {
             <button
               type="button"
               onClick={() => setExpanded((v) => !v)}
-              className="inline-flex w-full items-center justify-center rounded-lg bg-brand-600 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-500 sm:w-auto"
+              className="inline-flex items-center justify-center rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-500"
             >
               {expanded ? "Close" : "Quote"}
             </button>
@@ -492,17 +484,8 @@ function JobRow({ job, onApplied }: { job: BrowseJob; onApplied: () => void }) {
         </div>
       </div>
 
-      {needsService && (
-        <p className="border-t border-slate-50 px-4 pb-3 text-[11px] text-amber-800 lg:px-5">
-          Link <strong>{job.service_name}</strong> under Services &amp; contracts before you can bid.
-        </p>
-      )}
-
       {expanded && !needsService && (
-        <form
-          onSubmit={apply}
-          className="border-t border-slate-100 bg-slate-50/60 px-4 py-4 lg:px-5"
-        >
+        <form onSubmit={apply} className="mt-4 border-t border-slate-100 pt-4">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <label className="text-xs">
               <span className="text-slate-500">Your price (£)</span>
