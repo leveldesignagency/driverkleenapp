@@ -141,6 +141,16 @@ export default function ContractorJobLayoutPage() {
     }
 
     if (!hasAccess) {
+      const { data: qrAccess } = await supabase
+        .from("quote_requests")
+        .select("id")
+        .eq("job_id", jobId)
+        .eq("operative_id", operativeId)
+        .maybeSingle();
+      hasAccess = !!qrAccess;
+    }
+
+    if (!hasAccess) {
       router.replace("/contractor/jobs");
       return;
     }
