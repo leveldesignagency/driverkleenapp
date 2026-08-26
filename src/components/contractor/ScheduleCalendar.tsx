@@ -5,6 +5,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useContractorPortal } from "@/components/contractor/contractor-portal-context";
 import ContractorPageHeader from "@/components/contractor/ContractorPageHeader";
+import DayJourneyMap from "@/components/contractor/DayJourneyMap";
 import {
   CalendarDays,
   ChevronLeft,
@@ -14,7 +15,7 @@ import {
   X,
 } from "lucide-react";
 
-type ViewMode = "week" | "month";
+type ViewMode = "week" | "month" | "journey";
 
 type ScheduleJob = {
   assignmentId: string;
@@ -94,7 +95,7 @@ export default function ScheduleCalendar() {
       .from("job_assignments")
       .select(
         `id, assigned_at, completed_at,
-         jobs (
+         jobs!job_id (
            id, reference, postcode, city, address_line_1, preferred_date, preferred_time, status,
            services ( name )
          )`,
@@ -203,61 +204,65 @@ export default function ScheduleCalendar() {
     <div className="space-y-6">
       <ContractorPageHeader
         title="Schedule"
-        description="Your assigned jobs — week or month view. Click a day to expand, then a job for details."
+        description="Assigned jobs by week or month, plus a day journey map ordered by job times."
       />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
-          {(["week", "month"] as ViewMode[]).map((v) => (
+          {(["week", "month", "journey"] as ViewMode[]).map((v) => (
             <button
               key={v}
               type="button"
               onClick={() => {
                 setView(v);
                 setExpandedDay(null);
-                setAnchor(startOfDay(new Date()));
+                if (v !== "journey") setAnchor(startOfDay(new Date()));
               }}
               className={`rounded-lg px-4 py-2 text-sm font-semibold capitalize transition ${
                 view === v ? "bg-brand-600 text-white shadow" : "text-slate-600 hover:bg-slate-50"
               }`}
             >
-              {v}
+              {v === "journey" ? "Journey map" : v}
             </button>
           ))}
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => shiftPeriod(-1)}
-            className="rounded-lg border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50"
-            aria-label="Previous period"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </button>
-          <span className="min-w-[10rem] text-center text-sm font-semibold text-slate-800">{periodLabel}</span>
-          <button
-            type="button"
-            onClick={() => shiftPeriod(1)}
-            className="rounded-lg border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50"
-            aria-label="Next period"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setAnchor(startOfDay(new Date()));
-              setExpandedDay(formatDayKey(new Date()));
-            }}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-brand-700 hover:bg-brand-50"
-          >
-            Today
-          </button>
-        </div>
+        {view !== "journey" && (
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => shiftPeriod(-1)}
+              className="rounded-lg border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50"
+              aria-label="Previous period"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <span className="min-w-[10rem] text-center text-sm font-semibold text-slate-800">{periodLabel}</span>
+            <button
+              type="button"
+              onClick={() => shiftPeriod(1)}
+              className="rounded-lg border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50"
+              aria-label="Next period"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAnchor(startOfDay(new Date()));
+                setExpandedDay(formatDayKey(new Date()));
+              }}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-brand-700 hover:bg-brand-50"
+            >
+              Today
+            </button>
+          </div>
+        )}
       </div>
 
-      {loading ? (
+      {view === "journey" ? (
+        <DayJourneyMap />
+      ) : loading ? (
         <div className="flex justify-center py-16">
           <Loader2 className="h-8 w-8 animate-spin text-brand-600" />
         </div>

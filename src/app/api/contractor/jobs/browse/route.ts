@@ -8,10 +8,9 @@ import {
   postcodeMatchesServiceAreas,
 } from "@/lib/postcode-distance";
 
-/** Statuses where contractors can still discover and bid. */
 const OPEN_STATUSES = ["pending", "awaiting_quotes", "quotes_received"] as const;
 
-export async function GET() {
+export async function GET(request: Request) {
   const supabase = createServerSupabaseClient();
   const {
     data: { user },
@@ -26,16 +25,32 @@ export async function GET() {
   }
 
   const operativeId = String(operative.id);
+  const url = new URL(request.url);
 
-  const basePostcode = String(operative.base_postcode || "").trim();
-  const radius = Number(operative.max_travel_radius_miles) || 25;
-  const areas = Array.isArray(operative.service_areas)
+  const profileBase = String(operative.base_postcode || "").trim();
+  const profileRadius = Number(operative.max_travel_radius_miles) || 25;
+  const profileAreas = Array.isArray(operative.service_areas)
     ? operative.service_areas.filter((a): a is string => typeof a === "string")
     : [];
 
+  // Search overrides (job-board style): default to profile, but client can widen/narrow.
+  const basePostcode = (url.searchParams.get("base") || profileBase).trim();
+  const radiusParam = Number(url.searchParams.get("radius"));
+  const radius = Number.isFinite(radiusParam) && radiusParam > 0 ? radiusParam : profileRadius;
+  const ignoreAreas = url.searchParams.get("ignoreAreas") === "1";
+  const areasParam = url.searchParams.get("areas");
+  const areas =
+    ignoreAreas
+      ? []
+      : areasParam != null
+        ? areasParam
+            .split(",")
+            .map((a) => a.trim())
+            .filter(Boolean)
+        : profileAreas;
+
   const baseCoords = basePostcode ? await geocodeUkPostcode(basePostcode) : null;
 
-  // Service role — bypasses RLS that hides jobs once a marketplace invite exists.
   const { data: jobs, error } = await admin
     .from("jobs")
     .select(
@@ -59,8 +74,6 @@ export async function GET() {
 
   const serviceIds = new Set((myServices || []).map((s) => s.service_id as string));
 
-  // Already bid (has a quote_response) — hide from Find a Job. Marketplace invites
-  // without a response still appear so the contractor can apply from Find a Job.
   const { data: myQuoted } = await admin
     .from("quote_requests")
     .select("job_id, quote_responses ( id )")
@@ -86,8 +99,6 @@ export async function GET() {
       continue;
     }
 
-    // If contractor has linked services, require a match. If none linked, show all open jobs
-    // so Find a Job is not empty — apply will still require the service link.
     if (serviceIds.size > 0 && !serviceIds.has(job.service_id as string)) {
       skippedService += 1;
       continue;
@@ -149,6 +160,11 @@ export async function GET() {
       radius_miles: radius,
       service_areas: areas,
       linked_services: serviceIds.size,
+      profile_defaults: {
+        base_postcode: profileBase || null,
+        radius_miles: profileRadius,
+        service_areas: profileAreas,
+      },
     },
     meta: {
       open_jobs_scanned: (jobs || []).length,

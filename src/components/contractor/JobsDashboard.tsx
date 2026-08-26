@@ -130,7 +130,7 @@ export default function JobsDashboard() {
         action={
           <Link
             href="/contractor/find"
-            className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-500"
+            className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-brand-500"
           >
             <Search className="h-4 w-4" />
             Find a Job
@@ -219,7 +219,7 @@ function QuotesTab({ rows, onRefresh }: { rows: QrRow[]; onRefresh: () => void }
       })}
       {rows.length === 0 && (
         <p className="rounded-2xl border border-dashed border-slate-200 bg-white/60 px-6 py-12 text-center text-sm text-slate-500">
-          No quotes yet — use <Link href="/contractor/find" className="font-semibold text-emerald-700 hover:underline">Find a Job</Link> to apply, or wait for Kleen to add you to a job.
+          No quotes yet — use <Link href="/contractor/find" className="font-semibold text-brand-600 hover:underline">Find a Job</Link> to apply, or wait for Kleen to add you to a job.
         </p>
       )}
     </div>

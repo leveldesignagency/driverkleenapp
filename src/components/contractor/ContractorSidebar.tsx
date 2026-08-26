@@ -115,10 +115,10 @@ export default function ContractorSidebar({ mobileOpen = false, onClose }: Props
             <Link
               href="/contractor/find"
               onClick={handleNav}
-              className={`mb-2 flex min-h-[48px] items-center justify-center gap-2 rounded-xl px-3 py-3 text-sm font-bold tracking-tight shadow-sm transition-all ${
+              className={`mb-2 flex min-h-[48px] items-center justify-center gap-2 rounded-xl px-3 py-3 text-sm font-bold tracking-tight transition-colors ${
                 findActive
-                  ? "bg-emerald-700 text-white ring-2 ring-emerald-300/60"
-                  : "bg-emerald-600 text-white hover:bg-emerald-500 hover:shadow-md"
+                  ? "bg-brand-600 text-white"
+                  : "bg-brand-600/90 text-white hover:bg-brand-600"
               }`}
             >
               <Search className="h-4 w-4 shrink-0" />

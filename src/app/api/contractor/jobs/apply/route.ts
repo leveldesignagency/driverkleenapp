@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import { resolveOperativeIdentity } from "@/lib/operative-identity";
+import { findConflict, jobWindow } from "@/lib/schedule-conflicts";
 
 const CUSTOMER_MARKUP = 1.175;
 const OPEN_STATUSES = ["pending", "awaiting_quotes", "quotes_received"];
@@ -14,13 +15,12 @@ export async function POST(request: Request) {
   if (!user?.email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await request.json().catch(() => ({}));
-  const { jobId, pricePence, estimatedHours, availableDate, notes, travelDistanceMiles } = body as {
+  const { jobId, pricePence, estimatedHours, availableDate, notes } = body as {
     jobId?: string;
     pricePence?: number;
     estimatedHours?: number;
     availableDate?: string;
     notes?: string;
-    travelDistanceMiles?: number;
   };
 
   if (!jobId || !pricePence || pricePence <= 0) {
@@ -35,11 +35,10 @@ export async function POST(request: Request) {
   }
 
   const operativeId = String(operative.id);
-  const maxRadius = Number(operative.max_travel_radius_miles);
 
   const { data: job } = await admin
     .from("jobs")
-    .select("id, service_id, status")
+    .select("id, reference, service_id, status, preferred_date, preferred_time")
     .eq("id", jobId)
     .single();
 
@@ -62,9 +61,28 @@ export async function POST(request: Request) {
     );
   }
 
-  if (travelDistanceMiles != null && Number.isFinite(maxRadius) && maxRadius > 0) {
-    if (travelDistanceMiles > maxRadius) {
-      return NextResponse.json({ error: "Job is outside your travel radius." }, { status: 400 });
+  // Schedule conflict: can't be on two jobs at overlapping times the same day.
+  const candidate = jobWindow({
+    jobId: job.id,
+    reference: job.reference || job.id.slice(0, 8),
+    preferredDate: availableDate || job.preferred_date,
+    preferredTime: job.preferred_time,
+    estimatedHours: estimatedHours ?? null,
+  });
+
+  if (candidate) {
+    const existingWindows = await loadOperativeDayWindows(admin, operativeId, candidate.date);
+    const conflict = findConflict(candidate, existingWindows);
+    if (conflict) {
+      const fmt = (m: number) =>
+        `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+      return NextResponse.json(
+        {
+          error: `This overlaps ${conflict.reference} on ${conflict.date} (${fmt(conflict.startMin)}–${fmt(conflict.endMin)}). You can’t take two jobs at once.`,
+          conflict: conflict,
+        },
+        { status: 409 },
+      );
     }
   }
 
@@ -72,7 +90,6 @@ export async function POST(request: Request) {
   const customerPricePence = Math.round(pricePence * CUSTOMER_MARKUP);
   const now = new Date().toISOString();
 
-  // Reuse marketplace invite row if present; otherwise create a contractor apply row.
   let quoteRequestId: string | null = null;
   const { data: existingQr } = await admin
     .from("quote_requests")
@@ -149,4 +166,64 @@ export async function POST(request: Request) {
     customerPricePence,
     message: "Your quote was submitted. Kleen can send it to the customer when ready.",
   });
+}
+
+async function loadOperativeDayWindows(
+  admin: ReturnType<typeof createServiceRoleClient>,
+  operativeId: string,
+  date: string,
+) {
+  const windows = [];
+
+  const { data: assignments } = await admin
+    .from("job_assignments")
+    .select(
+      `id, jobs!job_id ( id, reference, preferred_date, preferred_time, status )`,
+    )
+    .eq("operative_id", operativeId)
+    .is("completed_at", null);
+
+  for (const row of assignments || []) {
+    const job = Array.isArray(row.jobs) ? row.jobs[0] : row.jobs;
+    if (!job || String(job.preferred_date || "").slice(0, 10) !== date) continue;
+    if (["cancelled", "completed", "funds_released"].includes(String(job.status || ""))) continue;
+    const w = jobWindow({
+      jobId: String(job.id),
+      reference: String(job.reference || job.id),
+      preferredDate: job.preferred_date,
+      preferredTime: job.preferred_time,
+    });
+    if (w) windows.push(w);
+  }
+
+  const { data: quotes } = await admin
+    .from("quote_requests")
+    .select(
+      `id, status,
+       quote_responses ( estimated_hours ),
+       jobs!job_id ( id, reference, preferred_date, preferred_time, status, accepted_quote_request_id )`,
+    )
+    .eq("operative_id", operativeId);
+
+  for (const row of quotes || []) {
+    const job = Array.isArray(row.jobs) ? row.jobs[0] : row.jobs;
+    const resp = Array.isArray(row.quote_responses) ? row.quote_responses[0] : row.quote_responses;
+    if (!job || !resp) continue;
+    if (String(job.preferred_date || "").slice(0, 10) !== date) continue;
+    // Count assigned / accepted / still-open quotes on that day as diary holds
+    const accepted = job.accepted_quote_request_id === row.id;
+    const openQuote = ["quoted", "sent", "viewed"].includes(String(row.status || ""));
+    if (!accepted && !openQuote) continue;
+    if (["cancelled", "completed", "funds_released"].includes(String(job.status || ""))) continue;
+    const w = jobWindow({
+      jobId: String(job.id),
+      reference: String(job.reference || job.id),
+      preferredDate: job.preferred_date,
+      preferredTime: job.preferred_time,
+      estimatedHours: resp.estimated_hours,
+    });
+    if (w) windows.push(w);
+  }
+
+  return windows;
 }
