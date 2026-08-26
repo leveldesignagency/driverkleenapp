@@ -14,6 +14,7 @@ import {
   ExternalLink,
   RefreshCw,
   SlidersHorizontal,
+  Check,
 } from "lucide-react";
 
 type BrowseJob = {
@@ -223,30 +224,26 @@ export default function FindJobsDashboard() {
             </div>
           </label>
 
-          <div className="flex flex-col justify-end gap-2">
-            <label className="flex cursor-pointer items-center gap-2 text-xs text-slate-600">
-              <input
-                type="checkbox"
-                checked={ignoreAreas}
-                onChange={(e) => setIgnoreAreas(e.target.checked)}
-                className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
-              />
-              Ignore saved service areas for this search
-            </label>
-            <label className="flex cursor-pointer items-center gap-2 text-xs text-slate-600">
-              <input
-                type="checkbox"
-                checked={onlyMyServices}
-                onChange={(e) => setOnlyMyServices(e.target.checked)}
-                className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
-              />
-              Only jobs matching my linked services
-            </label>
-            {!ignoreAreas && (filterInfo?.profile_defaults?.service_areas?.length ?? 0) > 0 && (
-              <p className="text-[11px] text-slate-400">
-                Areas: {filterInfo?.profile_defaults?.service_areas?.join(", ")}
-              </p>
-            )}
+          <div className="flex flex-col justify-end gap-2 min-h-[4.5rem]">
+            <FilterCheck
+              checked={ignoreAreas}
+              onChange={setIgnoreAreas}
+              label="Ignore saved service areas for this search"
+            />
+            <FilterCheck
+              checked={onlyMyServices}
+              onChange={setOnlyMyServices}
+              label="Only jobs matching my linked services"
+            />
+            <p
+              className={`min-h-[1rem] text-[11px] text-slate-400 ${
+                !ignoreAreas && (filterInfo?.profile_defaults?.service_areas?.length ?? 0) > 0
+                  ? "visible"
+                  : "invisible"
+              }`}
+            >
+              Areas: {filterInfo?.profile_defaults?.service_areas?.join(", ") || "—"}
+            </p>
           </div>
         </div>
 
@@ -329,24 +326,66 @@ export default function FindJobsDashboard() {
           </div>
         </div>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-2">
-          {filtered.map((job) => (
-            <JobCard
-              key={job.id}
-              job={job}
-              onApplied={() => {
-                load();
-                router.push("/contractor/jobs");
-              }}
-            />
-          ))}
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+          <div className="hidden border-b border-slate-100 bg-slate-50/80 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500 sm:grid sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_5.5rem_8.5rem] sm:gap-3 lg:px-5">
+            <span>Job</span>
+            <span>Location</span>
+            <span>When</span>
+            <span className="text-right">Distance</span>
+            <span className="text-right">Action</span>
+          </div>
+          <ul className="divide-y divide-slate-100">
+            {filtered.map((job) => (
+              <JobRow
+                key={job.id}
+                job={job}
+                onApplied={() => {
+                  load();
+                  router.push("/contractor/jobs");
+                }}
+              />
+            ))}
+          </ul>
         </div>
       )}
     </div>
   );
 }
 
-function JobCard({ job, onApplied }: { job: BrowseJob; onApplied: () => void }) {
+function FilterCheck({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={() => onChange(!checked)}
+      className="flex w-full items-start gap-2.5 rounded-lg px-0.5 py-0.5 text-left text-xs text-slate-600 outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
+    >
+      <span
+        className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
+          checked
+            ? "border-brand-600 bg-brand-600 text-white"
+            : "border-slate-300 bg-white text-transparent"
+        }`}
+        aria-hidden
+      >
+        <Check className="h-3 w-3" strokeWidth={3} />
+      </span>
+      <span className="min-w-0 leading-snug">{label}</span>
+    </button>
+  );
+}
+
+function JobRow({ job, onApplied }: { job: BrowseJob; onApplied: () => void }) {
   const [price, setPrice] = useState("");
   const [hours, setHours] = useState("");
   const [avail, setAvail] = useState("");
@@ -384,78 +423,87 @@ function JobCard({ job, onApplied }: { job: BrowseJob; onApplied: () => void }) 
     onApplied();
   };
 
-  const mapUrl = `https://www.openstreetmap.org/search?query=${encodeURIComponent(job.postcode)}`;
+  const whenLabel = job.preferred_date
+    ? `${new Date(job.preferred_date).toLocaleDateString("en-GB")} · ${job.preferred_time?.slice(0, 5) || "Flexible"}`
+    : "Date flexible";
+
+  const needsService = job.matches_your_services === false;
 
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="font-bold text-slate-900">{job.reference}</p>
-          <p className="text-sm text-brand-700">{job.service_name}</p>
-        </div>
-        <div className="flex shrink-0 flex-col items-end gap-1">
-          {job.distance_miles != null && (
-            <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-800">
-              {job.distance_miles} mi
-            </span>
-          )}
-          {job.matches_your_services === false && (
-            <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-semibold text-amber-800">
-              Service not linked
-            </span>
+    <li className="bg-white">
+      <div className="flex flex-col gap-3 px-4 py-3.5 sm:grid sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_5.5rem_8.5rem] sm:items-center sm:gap-3 lg:px-5">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="truncate text-sm font-semibold text-slate-900">{job.reference}</p>
+            {needsService && (
+              <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">
+                Service not linked
+              </span>
+            )}
+          </div>
+          <p className="truncate text-xs text-brand-700">{job.service_name}</p>
+          {job.quantity != null && (
+            <p className="mt-0.5 text-[11px] text-slate-400">{job.quantity} rooms/units</p>
           )}
         </div>
-      </div>
 
-      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
-        <span className="inline-flex items-center gap-1">
-          <MapPin className="h-3.5 w-3.5" />
-          {job.postcode}
-          {job.city ? ` · ${job.city}` : ""}
-        </span>
-        <span>
-          {job.preferred_date
-            ? `${new Date(job.preferred_date).toLocaleDateString("en-GB")} · ${job.preferred_time?.slice(0, 5) || "Flexible"}`
-            : "Date flexible"}
-        </span>
-        {job.quantity != null && <span>{job.quantity} rooms/units</span>}
-      </div>
-
-      <a
-        href={mapUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-700"
-      >
-        View on map <ExternalLink className="h-3 w-3" />
-      </a>
-
-      {job.notes && <p className="mt-2 text-sm text-slate-600 line-clamp-2">{job.notes}</p>}
-
-      {job.matches_your_services === false ? (
-        <div className="mt-4 space-y-2 rounded-xl border border-amber-100 bg-amber-50/80 p-4">
-          <p className="text-xs text-amber-900">
-            This job needs <strong>{job.service_name}</strong>. Link that service under Services &amp; contracts,
-            then you can submit a quote.
+        <div className="min-w-0 text-xs text-slate-600">
+          <p className="inline-flex items-center gap-1 truncate">
+            <MapPin className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+            {job.postcode}
+            {job.city ? ` · ${job.city}` : ""}
           </p>
-          <Link
-            href="/contractor/services"
-            className="inline-flex w-full items-center justify-center rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-500"
+          <a
+            href={`https://www.openstreetmap.org/search?query=${encodeURIComponent(job.postcode)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-medium text-brand-600 hover:text-brand-700"
           >
-            Add {job.service_name}
-          </Link>
+            Map <ExternalLink className="h-3 w-3" />
+          </a>
         </div>
-      ) : !expanded ? (
-        <button
-          type="button"
-          onClick={() => setExpanded(true)}
-          className="mt-4 w-full rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-500"
+
+        <div className="min-w-0 text-xs text-slate-600">
+          <p>{whenLabel}</p>
+          {job.notes && <p className="mt-0.5 line-clamp-1 text-[11px] text-slate-400">{job.notes}</p>}
+        </div>
+
+        <div className="text-left text-xs font-semibold text-slate-700 sm:text-right">
+          {job.distance_miles != null ? `${job.distance_miles} mi` : "—"}
+        </div>
+
+        <div className="flex sm:justify-end">
+          {needsService ? (
+            <Link
+              href="/contractor/services"
+              className="inline-flex w-full items-center justify-center rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900 hover:bg-amber-100 sm:w-auto"
+            >
+              Add service
+            </Link>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              className="inline-flex w-full items-center justify-center rounded-lg bg-brand-600 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-500 sm:w-auto"
+            >
+              {expanded ? "Close" : "Quote"}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {needsService && (
+        <p className="border-t border-slate-50 px-4 pb-3 text-[11px] text-amber-800 lg:px-5">
+          Link <strong>{job.service_name}</strong> under Services &amp; contracts before you can bid.
+        </p>
+      )}
+
+      {expanded && !needsService && (
+        <form
+          onSubmit={apply}
+          className="border-t border-slate-100 bg-slate-50/60 px-4 py-4 lg:px-5"
         >
-          Submit a quote
-        </button>
-      ) : (
-        <form onSubmit={apply} className="mt-4 space-y-3 rounded-xl border border-slate-100 bg-slate-50/80 p-4">
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <label className="text-xs">
               <span className="text-slate-500">Your price (£)</span>
               <input
@@ -465,7 +513,7 @@ function JobCard({ job, onApplied }: { job: BrowseJob; onApplied: () => void }) 
                 required
                 value={price}
                 onChange={(e) => setPrice(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
               />
             </label>
             <label className="text-xs">
@@ -476,43 +524,47 @@ function JobCard({ job, onApplied }: { job: BrowseJob; onApplied: () => void }) 
                 min="0"
                 value={hours}
                 onChange={(e) => setHours(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
               />
             </label>
-            <label className="text-xs sm:col-span-2">
+            <label className="text-xs">
               <span className="text-slate-500">Earliest date</span>
               <input
                 type="date"
                 value={avail}
                 onChange={(e) => setAvail(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
               />
             </label>
-            <label className="text-xs sm:col-span-2">
+            <label className="text-xs">
               <span className="text-slate-500">Notes</span>
-              <textarea
+              <input
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                rows={2}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                placeholder="Optional"
               />
             </label>
           </div>
-          <div className="flex gap-2">
+          <div className="mt-3 flex flex-wrap justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setExpanded(false)}
+              className="rounded-lg px-3 py-2 text-xs font-medium text-slate-500 hover:bg-slate-100"
+            >
+              Cancel
+            </button>
             <button
               type="submit"
               disabled={busy}
-              className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-500 disabled:opacity-50"
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-xs font-semibold text-white hover:bg-brand-500 disabled:opacity-50"
             >
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
               {busy ? "Submitting…" : "Apply & quote"}
-            </button>
-            <button type="button" onClick={() => setExpanded(false)} className="rounded-xl px-4 text-sm text-slate-500">
-              Cancel
             </button>
           </div>
         </form>
       )}
-    </article>
+    </li>
   );
 }
