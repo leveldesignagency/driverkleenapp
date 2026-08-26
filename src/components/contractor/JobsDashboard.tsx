@@ -7,29 +7,9 @@ import { useContractorPortal } from "@/components/contractor/contractor-portal-c
 import ContractorPageHeader from "@/components/contractor/ContractorPageHeader";
 import {
   Loader2,
-  MapPin,
-  Navigation,
   Search,
-  Briefcase,
-  Send,
   CheckCircle2,
-  ExternalLink,
 } from "lucide-react";
-
-type BrowseJob = {
-  id: string;
-  reference: string;
-  service_name: string;
-  postcode: string;
-  city: string | null;
-  preferred_date: string;
-  preferred_time: string;
-  cleaning_type: string;
-  distance_miles: number | null;
-  quantity: number | null;
-  complexity: string | null;
-  notes: string | null;
-};
 
 type QrRow = {
   id: string;
@@ -86,17 +66,14 @@ type AssignmentRow = {
   }[] | null;
 };
 
-type Tab = "browse" | "quotes" | "assigned";
+type Tab = "quotes" | "assigned";
 
 export default function JobsDashboard() {
-  const { operativeId, isVerified, refresh } = useContractorPortal();
-  const [tab, setTab] = useState<Tab>("browse");
-  const [browseJobs, setBrowseJobs] = useState<BrowseJob[]>([]);
-  const [filterInfo, setFilterInfo] = useState<{ base_postcode: string | null; radius_miles: number } | null>(null);
+  const { refresh } = useContractorPortal();
+  const [tab, setTab] = useState<Tab>("quotes");
   const [quotes, setQuotes] = useState<QrRow[]>([]);
   const [assigned, setAssigned] = useState<AssignmentRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
 
   const loadQuotesAndAssigned = useCallback(async () => {
     const res = await fetch("/api/contractor/jobs/my-work", { credentials: "include" });
@@ -125,45 +102,17 @@ export default function JobsDashboard() {
       void refresh();
     }
 
-    // Prefer Assigned / My quotes when the contractor already has work
     setTab((current) => {
-      if (current !== "browse") return current;
-      if (mergedAssigned.length > 0) return "assigned";
-      if (qrData.length > 0) return "quotes";
-      return "browse";
+      if (current === "assigned" && mergedAssigned.length === 0 && qrData.length > 0) return "quotes";
+      if (mergedAssigned.length > 0 && qrData.length === 0) return "assigned";
+      return current;
     });
   }, [refresh]);
 
-  const loadBrowse = useCallback(async () => {
-    const res = await fetch("/api/contractor/jobs/browse", { credentials: "include" });
-    const json = (await res.json()) as {
-      jobs?: BrowseJob[];
-      filter?: { base_postcode: string | null; radius_miles: number };
-      error?: string;
-    };
-    if (res.ok) {
-      setBrowseJobs(json.jobs || []);
-      setFilterInfo(json.filter || null);
-    }
-  }, []);
-
   useEffect(() => {
     setLoading(true);
-    const loads: Promise<void>[] = [loadQuotesAndAssigned()];
-    if (isVerified && operativeId) loads.push(loadBrowse());
-    Promise.all(loads).finally(() => setLoading(false));
-  }, [isVerified, operativeId, loadBrowse, loadQuotesAndAssigned]);
-
-  const filteredBrowse = browseJobs.filter((j) => {
-    if (!search.trim()) return true;
-    const q = search.toLowerCase();
-    return (
-      j.reference.toLowerCase().includes(q) ||
-      j.postcode.toLowerCase().includes(q) ||
-      j.service_name.toLowerCase().includes(q) ||
-      (j.city || "").toLowerCase().includes(q)
-    );
-  });
+    loadQuotesAndAssigned().finally(() => setLoading(false));
+  }, [loadQuotesAndAssigned]);
 
   if (loading) {
     return (
@@ -176,14 +125,22 @@ export default function JobsDashboard() {
   return (
     <div>
       <ContractorPageHeader
-        title="Jobs & quotes"
-        description="Browse open jobs that match your services, track quotes you’ve submitted, and open assigned work."
+        title="My work"
+        description="Quotes you’ve applied to or been added on, and jobs assigned after the customer accepts."
+        action={
+          <Link
+            href="/contractor/find"
+            className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-500"
+          >
+            <Search className="h-4 w-4" />
+            Find a Job
+          </Link>
+        }
       />
 
       <div className="mb-6 flex flex-wrap gap-2">
         {(
           [
-            ["browse", "Browse jobs", browseJobs.length],
             ["quotes", "My quotes", quotes.length],
             ["assigned", "Assigned", assigned.length],
           ] as const
@@ -204,236 +161,9 @@ export default function JobsDashboard() {
         ))}
       </div>
 
-      {tab === "browse" && (
-        <BrowseTab
-          jobs={filteredBrowse}
-          filterInfo={filterInfo}
-          search={search}
-          onSearch={setSearch}
-          onApplied={() => {
-            loadBrowse();
-            loadQuotesAndAssigned();
-            setTab("quotes");
-          }}
-        />
-      )}
-
       {tab === "quotes" && <QuotesTab rows={quotes} onRefresh={loadQuotesAndAssigned} />}
       {tab === "assigned" && <AssignedTab rows={assigned} />}
     </div>
-  );
-}
-
-function BrowseTab({
-  jobs,
-  filterInfo,
-  search,
-  onSearch,
-  onApplied,
-}: {
-  jobs: BrowseJob[];
-  filterInfo: { base_postcode: string | null; radius_miles: number } | null;
-  search: string;
-  onSearch: (v: string) => void;
-  onApplied: () => void;
-}) {
-  return (
-    <div className="space-y-5">
-      <div className="flex flex-col gap-4 rounded-2xl border border-brand-100 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
-            <Navigation className="h-5 w-5" />
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-slate-900">Local job filter</p>
-            <p className="text-xs text-slate-500">
-              {filterInfo?.base_postcode
-                ? `Within ${filterInfo.radius_miles} miles of ${filterInfo.base_postcode}`
-                : "Set your base postcode on Profile to filter by travel distance."}
-            </p>
-          </div>
-        </div>
-        <Link href="/contractor/profile" className="text-sm font-semibold text-brand-600 hover:text-brand-700">
-          Edit travel settings →
-        </Link>
-      </div>
-
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-        <input
-          value={search}
-          onChange={(e) => onSearch(e.target.value)}
-          placeholder="Search by reference, postcode, service…"
-          className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm shadow-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
-        />
-      </div>
-
-      {jobs.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-slate-200 bg-white/60 px-6 py-14 text-center">
-          <Briefcase className="mx-auto h-10 w-10 text-slate-300" />
-          <p className="mt-3 font-medium text-slate-700">No open jobs in your area</p>
-          <p className="mt-1 text-sm text-slate-500">
-            Check your service areas, travel radius, and linked services on your profile.
-          </p>
-        </div>
-      ) : (
-        <div className="grid gap-4 lg:grid-cols-2">
-          {jobs.map((job) => (
-            <BrowseJobCard key={job.id} job={job} onApplied={onApplied} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function BrowseJobCard({ job, onApplied }: { job: BrowseJob; onApplied: () => void }) {
-  const [price, setPrice] = useState("");
-  const [hours, setHours] = useState("");
-  const [avail, setAvail] = useState("");
-  const [notes, setNotes] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [expanded, setExpanded] = useState(false);
-
-  const apply = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const pounds = Number(price);
-    if (!Number.isFinite(pounds) || pounds <= 0) {
-      alert("Enter a valid price (£)");
-      return;
-    }
-    setBusy(true);
-    const res = await fetch("/api/contractor/jobs/apply", {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        jobId: job.id,
-        pricePence: Math.round(pounds * 100),
-        estimatedHours: hours ? Number(hours) : undefined,
-        availableDate: avail || undefined,
-        notes: notes.trim() || undefined,
-        travelDistanceMiles: job.distance_miles ?? undefined,
-      }),
-    });
-    const json = (await res.json()) as { error?: string; message?: string };
-    setBusy(false);
-    if (!res.ok) {
-      alert(json.error || "Could not submit quote");
-      return;
-    }
-    alert(json.message || "Quote submitted");
-    onApplied();
-  };
-
-  const mapUrl = `https://www.openstreetmap.org/search?query=${encodeURIComponent(job.postcode)}`;
-
-  return (
-    <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="font-bold text-slate-900">{job.reference}</p>
-          <p className="text-sm text-brand-700">{job.service_name}</p>
-        </div>
-        {job.distance_miles != null && (
-          <span className="shrink-0 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800">
-            {job.distance_miles} mi
-          </span>
-        )}
-      </div>
-
-      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
-        <span className="inline-flex items-center gap-1">
-          <MapPin className="h-3.5 w-3.5" />
-          {job.postcode}
-          {job.city ? ` · ${job.city}` : ""}
-        </span>
-        <span>
-          {new Date(job.preferred_date).toLocaleDateString("en-GB")} · {job.preferred_time?.slice(0, 5)}
-        </span>
-        {job.quantity != null && <span>{job.quantity} rooms/units</span>}
-      </div>
-
-      <a
-        href={mapUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-700"
-      >
-        View on map <ExternalLink className="h-3 w-3" />
-      </a>
-
-      {job.notes && <p className="mt-2 text-sm text-slate-600 line-clamp-2">{job.notes}</p>}
-
-      {!expanded ? (
-        <button
-          type="button"
-          onClick={() => setExpanded(true)}
-          className="mt-4 w-full rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-500"
-        >
-          Submit a quote
-        </button>
-      ) : (
-        <form onSubmit={apply} className="mt-4 space-y-3 rounded-xl border border-slate-100 bg-slate-50/80 p-4">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="text-xs">
-              <span className="text-slate-500">Your price (£ ex VAT)</span>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                required
-                value={price}
-                onChange={(e) => setPrice(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-              />
-            </label>
-            <label className="text-xs">
-              <span className="text-slate-500">Est. hours</span>
-              <input
-                type="number"
-                step="0.25"
-                min="0"
-                value={hours}
-                onChange={(e) => setHours(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-              />
-            </label>
-            <label className="text-xs sm:col-span-2">
-              <span className="text-slate-500">Earliest date</span>
-              <input
-                type="date"
-                value={avail}
-                onChange={(e) => setAvail(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-              />
-            </label>
-            <label className="text-xs sm:col-span-2">
-              <span className="text-slate-500">Notes</span>
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                rows={2}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-              />
-            </label>
-          </div>
-          <div className="flex gap-2">
-            <button
-              type="submit"
-              disabled={busy}
-              className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-500 disabled:opacity-50"
-            >
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              {busy ? "Submitting…" : "Apply & send quote"}
-            </button>
-            <button type="button" onClick={() => setExpanded(false)} className="rounded-xl px-4 text-sm text-slate-500">
-              Cancel
-            </button>
-          </div>
-        </form>
-      )}
-    </article>
   );
 }
 
@@ -489,7 +219,7 @@ function QuotesTab({ rows, onRefresh }: { rows: QrRow[]; onRefresh: () => void }
       })}
       {rows.length === 0 && (
         <p className="rounded-2xl border border-dashed border-slate-200 bg-white/60 px-6 py-12 text-center text-sm text-slate-500">
-          No quotes yet — use Browse jobs to find work that matches your services, or wait for Kleen to add you to a job.
+          No quotes yet — use <Link href="/contractor/find" className="font-semibold text-emerald-700 hover:underline">Find a Job</Link> to apply, or wait for Kleen to add you to a job.
         </p>
       )}
     </div>

@@ -8,6 +8,9 @@ import {
   postcodeMatchesServiceAreas,
 } from "@/lib/postcode-distance";
 
+/** Statuses where contractors can still discover and bid. */
+const OPEN_STATUSES = ["pending", "awaiting_quotes", "quotes_received"] as const;
+
 export async function GET() {
   const supabase = createServerSupabaseClient();
   const {
@@ -32,41 +35,78 @@ export async function GET() {
 
   const baseCoords = basePostcode ? await geocodeUkPostcode(basePostcode) : null;
 
-  const { data: jobs, error } = await supabase
+  // Service role — bypasses RLS that hides jobs once a marketplace invite exists.
+  const { data: jobs, error } = await admin
     .from("jobs")
     .select(
       `
         id, reference, status, postcode, city, preferred_date, preferred_time, cleaning_type, notes,
         service_id, services ( name ),
         job_details ( quantity, complexity, size )
-      `
+      `,
     )
-    .in("status", ["pending", "awaiting_quotes"])
+    .in("status", [...OPEN_STATUSES])
     .order("created_at", { ascending: false })
-    .limit(100);
+    .limit(150);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
-  const { data: myServices } = await supabase
+  const { data: myServices } = await admin
     .from("operative_services")
     .select("service_id")
+    .eq("operative_id", operativeId)
+    .eq("is_active", true);
+
+  const serviceIds = new Set((myServices || []).map((s) => s.service_id as string));
+
+  // Already bid (has a quote_response) — hide from Find a Job. Marketplace invites
+  // without a response still appear so the contractor can apply from Find a Job.
+  const { data: myQuoted } = await admin
+    .from("quote_requests")
+    .select("job_id, quote_responses ( id )")
     .eq("operative_id", operativeId);
 
-  const serviceIds = new Set((myServices || []).map((s) => s.service_id));
+  const alreadyAppliedJobIds = new Set<string>();
+  for (const row of myQuoted || []) {
+    const resps = row.quote_responses;
+    const hasResponse = Array.isArray(resps) ? resps.length > 0 : Boolean(resps);
+    if (hasResponse && row.job_id) alreadyAppliedJobIds.add(String(row.job_id));
+  }
 
   type JobRow = NonNullable<typeof jobs>[number];
   const results: Array<Record<string, unknown>> = [];
+  let skippedService = 0;
+  let skippedArea = 0;
+  let skippedDistance = 0;
+  let skippedApplied = 0;
 
   for (const job of (jobs || []) as JobRow[]) {
-    if (!serviceIds.has(job.service_id)) continue;
-    if (areas.length && !postcodeMatchesServiceAreas(job.postcode, areas)) continue;
+    if (alreadyAppliedJobIds.has(String(job.id))) {
+      skippedApplied += 1;
+      continue;
+    }
+
+    // If contractor has linked services, require a match. If none linked, show all open jobs
+    // so Find a Job is not empty — apply will still require the service link.
+    if (serviceIds.size > 0 && !serviceIds.has(job.service_id as string)) {
+      skippedService += 1;
+      continue;
+    }
+
+    if (areas.length && !postcodeMatchesServiceAreas(String(job.postcode || ""), areas)) {
+      skippedArea += 1;
+      continue;
+    }
 
     let distanceMilesVal: number | null = null;
     if (baseCoords) {
-      const jobCoords = await geocodeUkPostcode(job.postcode);
+      const jobCoords = await geocodeUkPostcode(String(job.postcode || ""));
       if (jobCoords) {
         distanceMilesVal = Math.round(distanceMiles(baseCoords, jobCoords) * 10) / 10;
-        if (distanceMilesVal > radius) continue;
+        if (distanceMilesVal > radius) {
+          skippedDistance += 1;
+          continue;
+        }
       }
     }
 
@@ -104,6 +144,18 @@ export async function GET() {
 
   return NextResponse.json({
     jobs: results,
-    filter: { base_postcode: basePostcode || null, radius_miles: radius },
+    filter: {
+      base_postcode: basePostcode || null,
+      radius_miles: radius,
+      service_areas: areas,
+      linked_services: serviceIds.size,
+    },
+    meta: {
+      open_jobs_scanned: (jobs || []).length,
+      skipped_service: skippedService,
+      skipped_area: skippedArea,
+      skipped_distance: skippedDistance,
+      skipped_already_applied: skippedApplied,
+    },
   });
 }

@@ -13,6 +13,7 @@ import {
   Scale,
   LogOut,
   X,
+  Search,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useContractorPortal } from "@/components/contractor/contractor-portal-context";
@@ -33,7 +34,7 @@ const NAV_BASE = [
 ];
 const NAV_VERIFIED = [
   { href: "/contractor/schedule", label: "Schedule", icon: CalendarDays },
-  { href: "/contractor/jobs", label: "Jobs & quotes", icon: Briefcase },
+  { href: "/contractor/jobs", label: "My work", icon: Briefcase },
   { href: "/contractor/disputes", label: "Disputes", icon: Scale },
 ];
 
@@ -47,6 +48,7 @@ export default function ContractorSidebar({ mobileOpen = false, onClose }: Props
   const router = useRouter();
   const { isVerified, rejectionMessage } = useContractorPortal();
   const NAV = [...NAV_BASE, ...(isVerified ? NAV_VERIFIED : [])];
+  const findActive = pathname === "/contractor/find" || pathname.startsWith("/contractor/find/");
 
   const signOut = async () => {
     onClose?.();
@@ -109,6 +111,21 @@ export default function ContractorSidebar({ mobileOpen = false, onClose }: Props
         </div>
 
         <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-3">
+          {isVerified && (
+            <Link
+              href="/contractor/find"
+              onClick={handleNav}
+              className={`mb-2 flex min-h-[48px] items-center justify-center gap-2 rounded-xl px-3 py-3 text-sm font-bold tracking-tight shadow-sm transition-all ${
+                findActive
+                  ? "bg-emerald-700 text-white ring-2 ring-emerald-300/60"
+                  : "bg-emerald-600 text-white hover:bg-emerald-500 hover:shadow-md"
+              }`}
+            >
+              <Search className="h-4 w-4 shrink-0" />
+              Find a Job
+            </Link>
+          )}
+
           {NAV.map(({ href, label, icon: Icon }) => {
             const showActive =
               href === "/contractor"

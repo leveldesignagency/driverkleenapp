@@ -1,14 +1,17 @@
 import { NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServiceRoleClient } from "@/lib/supabase/service-role";
+import { resolveOperativeIdentity } from "@/lib/operative-identity";
 
 const CUSTOMER_MARKUP = 1.175;
+const OPEN_STATUSES = ["pending", "awaiting_quotes", "quotes_received"];
 
 export async function POST(request: Request) {
   const supabase = createServerSupabaseClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!user?.email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await request.json().catch(() => ({}));
   const { jobId, pricePence, estimatedHours, availableDate, notes, travelDistanceMiles } = body as {
@@ -24,31 +27,32 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "jobId and pricePence required" }, { status: 400 });
   }
 
-  const { data: operative } = await supabase
-    .from("operatives")
-    .select("id, is_verified, max_travel_radius_miles")
-    .eq("user_id", user.id)
-    .single();
+  const admin = createServiceRoleClient();
+  const { operative } = await resolveOperativeIdentity(admin, user.id, user.email);
 
   if (!operative?.is_verified) {
     return NextResponse.json({ error: "Verified contractor account required" }, { status: 403 });
   }
 
-  const { data: job } = await supabase
+  const operativeId = String(operative.id);
+  const maxRadius = Number(operative.max_travel_radius_miles);
+
+  const { data: job } = await admin
     .from("jobs")
     .select("id, service_id, status")
     .eq("id", jobId)
     .single();
 
-  if (!job || !["pending", "awaiting_quotes"].includes(job.status)) {
+  if (!job || !OPEN_STATUSES.includes(job.status)) {
     return NextResponse.json({ error: "Job is not open for quotes" }, { status: 400 });
   }
 
-  const { data: os } = await supabase
+  const { data: os } = await admin
     .from("operative_services")
     .select("id")
-    .eq("operative_id", operative.id)
+    .eq("operative_id", operativeId)
     .eq("service_id", job.service_id)
+    .eq("is_active", true)
     .maybeSingle();
 
   if (!os) {
@@ -58,8 +62,8 @@ export async function POST(request: Request) {
     );
   }
 
-  if (travelDistanceMiles != null && operative.max_travel_radius_miles != null) {
-    if (travelDistanceMiles > operative.max_travel_radius_miles) {
+  if (travelDistanceMiles != null && Number.isFinite(maxRadius) && maxRadius > 0) {
+    if (travelDistanceMiles > maxRadius) {
       return NextResponse.json({ error: "Job is outside your travel radius." }, { status: 400 });
     }
   }
@@ -68,38 +72,65 @@ export async function POST(request: Request) {
   const customerPricePence = Math.round(pricePence * CUSTOMER_MARKUP);
   const now = new Date().toISOString();
 
-  const { data: qr, error: qrErr } = await supabase
+  // Reuse marketplace invite row if present; otherwise create a contractor apply row.
+  let quoteRequestId: string | null = null;
+  const { data: existingQr } = await admin
     .from("quote_requests")
-    .insert({
-      job_id: jobId,
-      operative_id: operative.id,
-      sent_by: user.id,
-      initiated_by: "contractor",
-      status: "quoted",
-      deadline,
-      message: notes?.trim() || "Contractor applied from the job board.",
-      sent_at: now,
-      responded_at: now,
-    })
-    .select("id")
-    .single();
+    .select("id, status")
+    .eq("job_id", jobId)
+    .eq("operative_id", operativeId)
+    .maybeSingle();
 
-  if (qrErr) {
-    if (qrErr.code === "23505") {
+  if (existingQr) {
+    const { data: existingResp } = await admin
+      .from("quote_responses")
+      .select("id")
+      .eq("quote_request_id", existingQr.id)
+      .maybeSingle();
+    if (existingResp) {
       return NextResponse.json({ error: "You have already bid on this job." }, { status: 409 });
     }
-    return NextResponse.json({ error: qrErr.message }, { status: 400 });
+    await admin
+      .from("quote_requests")
+      .update({
+        status: "quoted",
+        initiated_by: "contractor",
+        message: notes?.trim() || "Contractor applied from Find a Job.",
+        responded_at: now,
+      })
+      .eq("id", existingQr.id);
+    quoteRequestId = existingQr.id;
+  } else {
+    const { data: qr, error: qrErr } = await admin
+      .from("quote_requests")
+      .insert({
+        job_id: jobId,
+        operative_id: operativeId,
+        sent_by: user.id,
+        initiated_by: "contractor",
+        status: "quoted",
+        deadline,
+        message: notes?.trim() || "Contractor applied from Find a Job.",
+        sent_at: now,
+        responded_at: now,
+      })
+      .select("id")
+      .single();
+
+    if (qrErr || !qr) {
+      return NextResponse.json({ error: qrErr?.message || "Could not create quote" }, { status: 400 });
+    }
+    quoteRequestId = qr.id;
   }
 
-  const { error: respErr } = await supabase.from("quote_responses").insert({
-    quote_request_id: qr.id,
+  const { error: respErr } = await admin.from("quote_responses").insert({
+    quote_request_id: quoteRequestId,
     price_pence: pricePence,
     customer_price_pence: customerPricePence,
     estimated_hours: estimatedHours ?? null,
     available_date: availableDate || null,
     notes: notes?.trim() || null,
     operative_service_id: os.id,
-    sent_to_customer_at: now,
   });
 
   if (respErr) {
@@ -107,13 +138,15 @@ export async function POST(request: Request) {
   }
 
   if (job.status === "pending") {
-    await supabase.from("jobs").update({ status: "awaiting_quotes" }).eq("id", jobId);
+    await admin.from("jobs").update({ status: "awaiting_quotes" }).eq("id", jobId);
+  } else if (job.status === "awaiting_quotes") {
+    await admin.from("jobs").update({ status: "quotes_received" }).eq("id", jobId);
   }
 
   return NextResponse.json({
     ok: true,
-    quoteRequestId: qr.id,
+    quoteRequestId,
     customerPricePence,
-    message: "Your quote was submitted. The customer can review it in their dashboard.",
+    message: "Your quote was submitted. Kleen can send it to the customer when ready.",
   });
 }
