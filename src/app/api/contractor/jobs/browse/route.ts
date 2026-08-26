@@ -38,6 +38,7 @@ export async function GET(request: Request) {
   const radiusParam = Number(url.searchParams.get("radius"));
   const radius = Number.isFinite(radiusParam) && radiusParam > 0 ? radiusParam : profileRadius;
   const ignoreAreas = url.searchParams.get("ignoreAreas") === "1";
+  const onlyMyServices = url.searchParams.get("onlyMyServices") === "1";
   const areasParam = url.searchParams.get("areas");
   const areas =
     ignoreAreas
@@ -92,6 +93,7 @@ export async function GET(request: Request) {
   let skippedArea = 0;
   let skippedDistance = 0;
   let skippedApplied = 0;
+  let outsideLinkedServices = 0;
 
   for (const job of (jobs || []) as JobRow[]) {
     if (alreadyAppliedJobIds.has(String(job.id))) {
@@ -99,9 +101,17 @@ export async function GET(request: Request) {
       continue;
     }
 
-    if (serviceIds.size > 0 && !serviceIds.has(job.service_id as string)) {
-      skippedService += 1;
-      continue;
+    const matchesService =
+      serviceIds.size === 0 || serviceIds.has(String(job.service_id || ""));
+
+    // Default: show all open jobs in range so contractors see marketplace demand.
+    // Optional onlyMyServices=1 keeps the old hard filter.
+    if (!matchesService) {
+      outsideLinkedServices += 1;
+      if (onlyMyServices && serviceIds.size > 0) {
+        skippedService += 1;
+        continue;
+      }
     }
 
     if (areas.length && !postcodeMatchesServiceAreas(String(job.postcode || ""), areas)) {
@@ -141,6 +151,7 @@ export async function GET(request: Request) {
       notes: job.notes,
       service_id: job.service_id,
       service_name: svcName || "Cleaning",
+      matches_your_services: matchesService,
       distance_miles: distanceMilesVal,
       quantity: det?.quantity ?? null,
       complexity: det?.complexity ?? null,
@@ -148,6 +159,9 @@ export async function GET(request: Request) {
   }
 
   results.sort((a, b) => {
+    const matchA = a.matches_your_services ? 0 : 1;
+    const matchB = b.matches_your_services ? 0 : 1;
+    if (matchA !== matchB) return matchA - matchB;
     const da = (a.distance_miles as number | null) ?? 9999;
     const db = (b.distance_miles as number | null) ?? 9999;
     return da - db;
@@ -160,6 +174,7 @@ export async function GET(request: Request) {
       radius_miles: radius,
       service_areas: areas,
       linked_services: serviceIds.size,
+      only_my_services: onlyMyServices,
       profile_defaults: {
         base_postcode: profileBase || null,
         radius_miles: profileRadius,
@@ -172,6 +187,7 @@ export async function GET(request: Request) {
       skipped_area: skippedArea,
       skipped_distance: skippedDistance,
       skipped_already_applied: skippedApplied,
+      outside_linked_services: outsideLinkedServices,
     },
   });
 }

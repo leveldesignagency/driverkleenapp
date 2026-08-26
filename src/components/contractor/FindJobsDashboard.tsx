@@ -20,6 +20,7 @@ type BrowseJob = {
   id: string;
   reference: string;
   service_name: string;
+  service_id?: string;
   postcode: string;
   city: string | null;
   preferred_date: string;
@@ -29,6 +30,7 @@ type BrowseJob = {
   quantity: number | null;
   complexity: string | null;
   notes: string | null;
+  matches_your_services?: boolean;
 };
 
 type ProfileDefaults = {
@@ -42,6 +44,7 @@ type FilterInfo = {
   radius_miles: number;
   service_areas?: string[];
   linked_services?: number;
+  only_my_services?: boolean;
   profile_defaults?: ProfileDefaults;
 };
 
@@ -51,6 +54,7 @@ type BrowseMeta = {
   skipped_area?: number;
   skipped_distance?: number;
   skipped_already_applied?: number;
+  outside_linked_services?: number;
 };
 
 export default function FindJobsDashboard() {
@@ -67,6 +71,7 @@ export default function FindJobsDashboard() {
   const [radius, setRadius] = useState(25);
   const [basePostcode, setBasePostcode] = useState("");
   const [ignoreAreas, setIgnoreAreas] = useState(false);
+  const [onlyMyServices, setOnlyMyServices] = useState(false);
   const [defaultsReady, setDefaultsReady] = useState(false);
 
   const load = useCallback(async () => {
@@ -75,6 +80,7 @@ export default function FindJobsDashboard() {
     if (basePostcode.trim()) params.set("base", basePostcode.trim());
     params.set("radius", String(radius));
     if (ignoreAreas) params.set("ignoreAreas", "1");
+    if (onlyMyServices) params.set("onlyMyServices", "1");
 
     const res = await fetch(`/api/contractor/jobs/browse?${params}`, { credentials: "include" });
     const json = (await res.json()) as {
@@ -98,7 +104,7 @@ export default function FindJobsDashboard() {
       setBasePostcode(d.base_postcode || "");
       setDefaultsReady(true);
     }
-  }, [basePostcode, radius, ignoreAreas, defaultsReady]);
+  }, [basePostcode, radius, ignoreAreas, onlyMyServices, defaultsReady]);
 
   useEffect(() => {
     if (!isVerified) {
@@ -120,6 +126,7 @@ export default function FindJobsDashboard() {
     setRadius(d?.radius_miles || 25);
     setBasePostcode(d?.base_postcode || "");
     setIgnoreAreas(false);
+    setOnlyMyServices(false);
     setLoading(true);
     // load uses state — set then fetch with explicit params
     const params = new URLSearchParams();
@@ -226,6 +233,15 @@ export default function FindJobsDashboard() {
               />
               Ignore saved service areas for this search
             </label>
+            <label className="flex cursor-pointer items-center gap-2 text-xs text-slate-600">
+              <input
+                type="checkbox"
+                checked={onlyMyServices}
+                onChange={(e) => setOnlyMyServices(e.target.checked)}
+                className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+              />
+              Only jobs matching my linked services
+            </label>
             {!ignoreAreas && (filterInfo?.profile_defaults?.service_areas?.length ?? 0) > 0 && (
               <p className="text-[11px] text-slate-400">
                 Areas: {filterInfo?.profile_defaults?.service_areas?.join(", ")}
@@ -277,6 +293,9 @@ export default function FindJobsDashboard() {
         {typeof filterInfo?.linked_services === "number"
           ? ` · ${filterInfo.linked_services} linked service${filterInfo.linked_services === 1 ? "" : "s"}`
           : ""}
+        {(meta?.outside_linked_services ?? 0) > 0 && !onlyMyServices
+          ? ` · ${meta?.outside_linked_services} need a service you haven't linked yet`
+          : ""}
       </p>
 
       {filtered.length === 0 ? (
@@ -286,8 +305,8 @@ export default function FindJobsDashboard() {
           <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">
             {(meta?.open_jobs_scanned ?? 0) === 0
               ? "There are no open jobs in the marketplace right now."
-              : meta && (meta.skipped_service || 0) > 0 && (filterInfo?.linked_services ?? 0) > 0
-                ? `Found ${meta.open_jobs_scanned} open job(s), but none match your linked services. Add the right services under Services & contracts.`
+              : meta && (meta.skipped_service || 0) > 0 && onlyMyServices
+                ? `Found ${meta.open_jobs_scanned} open job(s), but none match your linked services. Turn off “Only my linked services” to see them, or add services under Services & contracts.`
                 : meta && (meta.skipped_distance || 0) + (meta.skipped_area || 0) > 0
                   ? `Found ${meta.open_jobs_scanned} open job(s) outside your current filters. Increase distance or ignore service areas, then Apply filters.`
                   : meta && (meta.skipped_already_applied || 0) > 0
@@ -374,11 +393,18 @@ function JobCard({ job, onApplied }: { job: BrowseJob; onApplied: () => void }) 
           <p className="font-bold text-slate-900">{job.reference}</p>
           <p className="text-sm text-brand-700">{job.service_name}</p>
         </div>
-        {job.distance_miles != null && (
-          <span className="shrink-0 rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-800">
-            {job.distance_miles} mi
-          </span>
-        )}
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          {job.distance_miles != null && (
+            <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-800">
+              {job.distance_miles} mi
+            </span>
+          )}
+          {job.matches_your_services === false && (
+            <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-semibold text-amber-800">
+              Service not linked
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
@@ -406,7 +432,20 @@ function JobCard({ job, onApplied }: { job: BrowseJob; onApplied: () => void }) 
 
       {job.notes && <p className="mt-2 text-sm text-slate-600 line-clamp-2">{job.notes}</p>}
 
-      {!expanded ? (
+      {job.matches_your_services === false ? (
+        <div className="mt-4 space-y-2 rounded-xl border border-amber-100 bg-amber-50/80 p-4">
+          <p className="text-xs text-amber-900">
+            This job needs <strong>{job.service_name}</strong>. Link that service under Services &amp; contracts,
+            then you can submit a quote.
+          </p>
+          <Link
+            href="/contractor/services"
+            className="inline-flex w-full items-center justify-center rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-500"
+          >
+            Add {job.service_name}
+          </Link>
+        </div>
+      ) : !expanded ? (
         <button
           type="button"
           onClick={() => setExpanded(true)}

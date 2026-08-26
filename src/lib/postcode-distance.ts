@@ -34,13 +34,24 @@ export function distanceMiles(a: LatLng, b: LatLng): number {
   return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
 }
 
-/** Loose match: job postcode outward code vs contractor service area labels. */
+/** Loose match: job postcode outward code vs contractor service area labels.
+ *  Postcode-shaped areas (SW1, E14, M1) match by prefix.
+ *  City/region labels (London, Manchester) are ignored here — radius/distance
+ *  already covers proximity; treating "London" as a postcode prefix hid all jobs.
+ */
 export function postcodeMatchesServiceAreas(postcode: string, areas: string[]): boolean {
   if (!areas.length) return true;
   const pc = normalizePostcode(postcode);
   const outward = pc.split(" ")[0] || pc.slice(0, 4);
-  return areas.some((a) => {
-    const area = a.trim().toUpperCase();
-    return pc.startsWith(area) || outward.startsWith(area) || area.startsWith(outward);
-  });
+
+  const postcodeShaped = areas
+    .map((a) => a.trim().toUpperCase())
+    .filter((area) => /^[A-Z]{1,2}\d/.test(area));
+
+  // Only region names saved (e.g. "London") — don't hard-filter by string prefix.
+  if (!postcodeShaped.length) return true;
+
+  return postcodeShaped.some(
+    (area) => pc.startsWith(area) || outward.startsWith(area) || area.startsWith(outward),
+  );
 }
