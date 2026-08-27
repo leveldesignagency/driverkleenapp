@@ -53,6 +53,33 @@ export async function POST(
   }
 
   const admin = createServiceRoleClient();
+
+  if (action === "complete") {
+    const { data: reportRows } = await admin
+      .from("job_reports")
+      .select("stage, checklist")
+      .eq("job_id", jobId)
+      .eq("operative_id", operative.id);
+
+    const { isChecklistComplete, parseChecklist } = await import(
+      "@/lib/job-inspection-checklist"
+    );
+    const pre = reportRows?.find((r) => r.stage === "pre_job");
+    const post = reportRows?.find((r) => r.stage === "post_job");
+    if (!pre || !isChecklistComplete(parseChecklist(pre.checklist, "pre_job"), "pre_job")) {
+      return NextResponse.json(
+        { error: "Complete and save the “Before you start” due-diligence checklist first." },
+        { status: 400 },
+      );
+    }
+    if (!post || !isChecklistComplete(parseChecklist(post.checklist, "post_job"), "post_job")) {
+      return NextResponse.json(
+        { error: "Complete and save the “After the job” due-diligence checklist first." },
+        { status: 400 },
+      );
+    }
+  }
+
   const before = await loadJobFieldEmailSnapshot(admin, jobId);
 
   const result = await runContractorFieldAction(admin, jobId, action, {

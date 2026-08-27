@@ -1,15 +1,31 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useContractorPortal } from "@/components/contractor/contractor-portal-context";
 import CustomDropdown from "@/components/ui/CustomDropdown";
 import { JobEvidenceMedia } from "@/components/contractor/JobEvidenceMedia";
-import { Loader2 } from "lucide-react";
+import {
+  checklistForStage,
+  checklistProgress,
+  emptyChecklist,
+  isChecklistComplete,
+  parseChecklist,
+  type ChecklistState,
+  type ReportStage,
+} from "@/lib/job-inspection-checklist";
+import {
+  ArrowLeft,
+  Camera,
+  CheckCircle2,
+  ClipboardCheck,
+  Loader2,
+  Navigation,
+  AlertTriangle,
+} from "lucide-react";
 
-type ReportStage = "pre_job" | "post_job" | "cannot_start";
 type Outcome = "in_progress" | "completed" | "not_completed";
 
 type JobRow = {
@@ -40,19 +56,20 @@ type ReportRow = {
   stage: ReportStage;
   job_outcome: Outcome | null;
   summary: string | null;
+  checklist: ChecklistState | Record<string, unknown> | null;
   submitted_at: string;
   job_report_items: ReportItem[] | null;
 };
 
-const STAGE_OPTIONS = [
-  { value: "pre_job", label: "Pre-job inspection" },
-  { value: "post_job", label: "Post-job report" },
-  { value: "cannot_start", label: "Could not start job" },
+const STAGE_TABS: { value: ReportStage; label: string; short: string }[] = [
+  { value: "pre_job", label: "Before you start", short: "Before" },
+  { value: "post_job", label: "After the job", short: "After" },
+  { value: "cannot_start", label: "Couldn’t start", short: "Blocked" },
 ];
 
 const ITEM_TYPE_OPTIONS = [
-  { value: "damage", label: "Damage (pre-existing)" },
-  { value: "obstruction", label: "Obstruction / access issue" },
+  { value: "damage", label: "Pre-existing damage" },
+  { value: "obstruction", label: "Obstruction / access" },
   { value: "note", label: "General note" },
   { value: "completion_note", label: "Completion note" },
 ];
@@ -63,11 +80,23 @@ const OUTCOME_OPTIONS = [
   { value: "not_completed", label: "Not completed" },
 ];
 
+function SectionTitle({ children, id }: { children: React.ReactNode; id?: string }) {
+  return (
+    <h2 id={id} className="text-lg font-bold tracking-tight text-slate-900 sm:text-xl">
+      {children}
+    </h2>
+  );
+}
+
 export default function ContractorJobLayoutPage() {
   const params = useParams<{ jobId: string }>();
   const jobId = params?.jobId;
   const router = useRouter();
   const { operativeId, isVerified } = useContractorPortal();
+  const cancelRef = useRef<HTMLElement | null>(null);
+  const stageRef = useRef<ReportStage>(stage);
+  stageRef.current = stage;
+
   const [loading, setLoading] = useState(true);
   const [job, setJob] = useState<JobRow | null>(null);
   const [reports, setReports] = useState<ReportRow[]>([]);
@@ -76,9 +105,9 @@ export default function ContractorJobLayoutPage() {
   const [stage, setStage] = useState<ReportStage>("pre_job");
   const [summary, setSummary] = useState("");
   const [outcome, setOutcome] = useState<Outcome>("in_progress");
+  const [checklist, setChecklist] = useState<ChecklistState>(() => emptyChecklist("pre_job"));
   const [itemType, setItemType] = useState("damage");
   const [note, setNote] = useState("");
-  const [photoUrlsRaw, setPhotoUrlsRaw] = useState("");
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [fieldAction, setFieldAction] = useState<string | null>(null);
   const [customerRating, setCustomerRating] = useState(5);
@@ -100,7 +129,7 @@ export default function ContractorJobLayoutPage() {
       post_job: reports.find((r) => r.stage === "post_job"),
       cannot_start: reports.find((r) => r.stage === "cannot_start"),
     }),
-    [reports]
+    [reports],
   );
 
   const liveStatuses = ["customer_accepted", "accepted", "awaiting_completion", "in_progress", "pending_confirmation"];
@@ -109,8 +138,31 @@ export default function ContractorJobLayoutPage() {
   const showRateCustomer =
     job && ["completed", "funds_released"].includes(job.status) && !hasCustomerRating;
 
-  const load = useCallback(async () => {
-    if (!jobId || !operativeId || !isVerified) return;
+  const preDone = isChecklistComplete(
+    parseChecklist(reportByStage.pre_job?.checklist, "pre_job"),
+    "pre_job",
+  );
+  const postDone = isChecklistComplete(
+    parseChecklist(reportByStage.post_job?.checklist, "post_job"),
+    "post_job",
+  );
+  const stageProgress = checklistProgress(checklist, stage);
+  const stageComplete = isChecklistComplete(checklist, stage);
+
+  const hydrateStage = useCallback(
+    (next: ReportStage, list: ReportRow[]) => {
+      const existing = list.find((r) => r.stage === next);
+      setStage(next);
+      setSummary(existing?.summary || "");
+      setOutcome((existing?.job_outcome as Outcome) || (next === "pre_job" ? "in_progress" : "completed"));
+      setChecklist(parseChecklist(existing?.checklist, next));
+      setItemType(next === "post_job" ? "completion_note" : next === "cannot_start" ? "obstruction" : "damage");
+    },
+    [],
+  );
+
+  const load = useCallback(async (): Promise<ReportRow[]> => {
+    if (!jobId || !operativeId || !isVerified) return [];
     const supabase = createClient();
 
     const { data: assignment, error: assignErr } = await supabase
@@ -122,7 +174,6 @@ export default function ContractorJobLayoutPage() {
 
     let hasAccess = !assignErr && !!assignment;
     if (!hasAccess) {
-      // Also allow when this contractor's quote was accepted (assignment may be missing).
       const { data: jobGate } = await supabase
         .from("jobs")
         .select("accepted_quote_request_id")
@@ -152,30 +203,34 @@ export default function ContractorJobLayoutPage() {
 
     if (!hasAccess) {
       router.replace("/contractor/jobs");
-      return;
+      return [];
     }
 
     const [{ data: jobData }, { data: reportData }, { data: ratingRow }] = await Promise.all([
       supabase
         .from("jobs")
         .select(
-          "id, reference, status, user_id, address_line_1, city, postcode, preferred_date, operative_en_route_at, operative_arrived_at, operative_marked_complete_at, operative_marked_incomplete_at"
+          "id, reference, status, user_id, address_line_1, city, postcode, preferred_date, operative_en_route_at, operative_arrived_at, operative_marked_complete_at, operative_marked_incomplete_at",
         )
         .eq("id", jobId)
         .single(),
       supabase
         .from("job_reports")
-        .select("id, stage, job_outcome, summary, submitted_at, job_report_items(id, item_type, note, photo_urls, created_at)")
+        .select(
+          "id, stage, job_outcome, summary, checklist, submitted_at, job_report_items(id, item_type, note, photo_urls, created_at)",
+        )
         .eq("job_id", jobId)
         .eq("operative_id", operativeId)
         .order("submitted_at", { ascending: false }),
       supabase.from("job_customer_ratings").select("id").eq("job_id", jobId).maybeSingle(),
     ]);
 
+    const nextReports = (reportData as unknown as ReportRow[]) || [];
     setJob((jobData as JobRow) || null);
-    setReports((reportData as unknown as ReportRow[]) || []);
+    setReports(nextReports);
     setHasCustomerRating(!!ratingRow);
     setLoading(false);
+    return nextReports;
   }, [jobId, operativeId, isVerified, router]);
 
   useEffect(() => {
@@ -185,8 +240,8 @@ export default function ContractorJobLayoutPage() {
   useEffect(() => {
     if (!isVerified) return;
     setLoading(true);
-    load();
-  }, [load, isVerified]);
+    load().then((rows) => hydrateStage(stageRef.current, rows));
+  }, [load, isVerified, hydrateStage]);
 
   useEffect(() => {
     if (!jobId || !showLive) return;
@@ -204,8 +259,20 @@ export default function ContractorJobLayoutPage() {
       .catch(() => {});
   }, [jobId, showLive]);
 
+  const selectStage = (next: ReportStage) => {
+    hydrateStage(next, reports);
+  };
+
+  const toggleCheck = (key: string) => {
+    setChecklist((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
   const saveReport = async () => {
     if (!jobId || !operativeId) return;
+    if (!stageComplete) {
+      alert("Complete every checklist item for this stage before saving.");
+      return;
+    }
     setSavingReport(true);
     const supabase = createClient();
     const payload = {
@@ -214,17 +281,20 @@ export default function ContractorJobLayoutPage() {
       stage,
       summary: summary.trim() || null,
       job_outcome: stage === "pre_job" ? "in_progress" : outcome,
+      checklist,
       submitted_at: new Date().toISOString(),
     };
-    const { error } = await supabase
-      .from("job_reports")
-      .upsert(payload, { onConflict: "job_id,operative_id,stage" });
+    const { error } = await supabase.from("job_reports").upsert(payload, { onConflict: "job_id,operative_id,stage" });
     setSavingReport(false);
     if (error) {
-      alert(error.message);
+      alert(
+        error.message.includes("checklist")
+          ? "Checklist column not available yet — ask Kleen to apply the latest database migration."
+          : error.message,
+      );
       return;
     }
-    await load();
+    await load().then((rows) => hydrateStage(stage, rows));
   };
 
   const addItem = async () => {
@@ -242,6 +312,7 @@ export default function ContractorJobLayoutPage() {
           stage,
           job_outcome: stage === "pre_job" ? "in_progress" : outcome,
           summary: summary.trim() || null,
+          checklist,
         })
         .select("id")
         .single();
@@ -252,10 +323,7 @@ export default function ContractorJobLayoutPage() {
       }
       reportId = created.id;
     }
-    const photo_urls: string[] = photoUrlsRaw
-      .split("\n")
-      .map((s) => s.trim())
-      .filter(Boolean);
+    const photo_urls: string[] = [];
     for (const file of pendingFiles) {
       const fd = new FormData();
       fd.append("file", file);
@@ -284,13 +352,22 @@ export default function ContractorJobLayoutPage() {
       return;
     }
     setNote("");
-    setPhotoUrlsRaw("");
     setPendingFiles([]);
-    await load();
+    await load().then((rows) => hydrateStage(stage, rows));
   };
 
   const runField = async (action: "en_route" | "arrived" | "complete") => {
     if (!jobId) return;
+    if (action === "complete" && (!preDone || !postDone)) {
+      alert(
+        !preDone
+          ? "Finish and save the “Before you start” checklist before completing."
+          : "Finish and save the “After the job” checklist before completing.",
+      );
+      if (!preDone) selectStage("pre_job");
+      else selectStage("post_job");
+      return;
+    }
     setFieldAction(action);
     const res = await fetch(`/api/contractor/jobs/${jobId}/field`, {
       method: "POST",
@@ -353,6 +430,10 @@ export default function ContractorJobLayoutPage() {
     router.replace("/contractor/schedule");
   };
 
+  const scrollToCancel = () => {
+    cancelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   if (!isVerified || loading) {
     return (
       <div className="flex justify-center py-16">
@@ -363,52 +444,116 @@ export default function ContractorJobLayoutPage() {
 
   if (!job) return null;
 
+  const addressLine = `${job.address_line_1}${job.city ? `, ${job.city}` : ""} · ${job.postcode}`;
+  const stageItems = checklistForStage(stage);
+  const currentStageEvidence = reportByStage[stage]?.job_report_items || [];
+
   return (
-    <div className="space-y-6">
-      <div>
-        <Link href="/contractor/jobs" className="text-xs font-medium text-brand-600 hover:underline">
-          Back to jobs
-        </Link>
-        <h1 className="mt-1 text-2xl font-bold text-slate-900">Job layout</h1>
-        <p className="mt-1 break-words text-sm text-slate-600">
-          {job.reference} · {job.address_line_1}
-          {job.city ? `, ${job.city}` : ""} · {job.postcode}
-        </p>
+    <div className="mx-auto max-w-3xl space-y-8 pb-10">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <Link
+            href="/contractor/jobs"
+            className="inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Back to My work
+          </Link>
+          <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">{job.reference}</h1>
+          <p className="mt-1 break-words text-sm text-slate-600">{addressLine}</p>
+          <p className="mt-1 text-xs text-slate-500">
+            Scheduled{" "}
+            {job.preferred_date
+              ? new Date(job.preferred_date + (job.preferred_date.length === 10 ? "T12:00:00" : "")).toLocaleDateString(
+                  "en-GB",
+                  { weekday: "short", day: "numeric", month: "short", year: "numeric" },
+                )
+              : "—"}
+          </p>
+        </div>
+        {showLive && (
+          <button
+            type="button"
+            onClick={scrollToCancel}
+            className="shrink-0 rounded-lg border border-red-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50"
+          >
+            Cancel
+          </button>
+        )}
       </div>
 
+      {/* Live status */}
       {showLive && (
-        <section className="rounded-2xl border border-cyan-200 bg-cyan-50/80 p-5 shadow-sm">
-          <h2 className="text-sm font-semibold text-cyan-900">Live job</h2>
-          <p className="mt-1 text-xs text-cyan-800/90">
-            The customer is notified when you&apos;re on the way. Mark arrived before completing the job.
+        <section className="rounded-2xl border border-cyan-200 bg-gradient-to-br from-cyan-50 to-white p-5 shadow-sm sm:p-6">
+          <SectionTitle>On-site progress</SectionTitle>
+          <p className="mt-1 text-sm text-cyan-900/80">
+            Update the customer as you go. Complete both due-diligence checklists before marking the job done.
           </p>
+
+          <ol className="mt-5 grid gap-2 sm:grid-cols-3">
+            {[
+              { key: "en_route", label: "On the way", done: !!job.operative_en_route_at },
+              { key: "arrived", label: "Arrived", done: !!job.operative_arrived_at },
+              { key: "complete", label: "Complete", done: false },
+            ].map((step, i) => (
+              <li
+                key={step.key}
+                className={`rounded-xl border px-3 py-3 text-sm font-semibold ${
+                  step.done
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+                    : "border-slate-200 bg-white text-slate-700"
+                }`}
+              >
+                <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Step {i + 1}</span>
+                <p className="mt-0.5 flex items-center gap-1.5">
+                  {step.done && <CheckCircle2 className="h-4 w-4 text-emerald-600" />}
+                  {step.label}
+                </p>
+              </li>
+            ))}
+          </ol>
+
           <div className="mt-4 flex flex-wrap gap-2">
             <button
               type="button"
               disabled={!!job.operative_en_route_at || fieldAction === "en_route"}
               onClick={() => runField("en_route")}
-              className="rounded-lg bg-cyan-700 px-3 py-2 text-xs font-semibold text-white hover:bg-cyan-600 disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-cyan-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {fieldAction === "en_route" ? "Updating…" : "On my way"}
+              {fieldAction === "en_route" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Navigation className="h-4 w-4" />}
+              I&apos;m on the way
             </button>
             <button
               type="button"
               disabled={!job.operative_en_route_at || !!job.operative_arrived_at || fieldAction === "arrived"}
               onClick={() => runField("arrived")}
-              className="rounded-lg bg-cyan-700 px-3 py-2 text-xs font-semibold text-white hover:bg-cyan-600 disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-cyan-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {fieldAction === "arrived" ? "Updating…" : "Arrived"}
+              {fieldAction === "arrived" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              I&apos;ve arrived
             </button>
             <button
               type="button"
-              disabled={!job.operative_arrived_at || fieldAction === "complete"}
+              disabled={!job.operative_arrived_at || fieldAction === "complete" || !preDone || !postDone}
               onClick={() => runField("complete")}
-              className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
+              title={!preDone || !postDone ? "Save both before & after checklists first" : undefined}
+              className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {fieldAction === "complete" ? "Updating…" : "Mark job complete"}
+              {fieldAction === "complete" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+              Mark job complete
             </button>
           </div>
-          <ul className="mt-3 space-y-1 text-xs text-cyan-900/80">
+
+          {(!preDone || !postDone) && job.operative_arrived_at && (
+            <p className="mt-3 flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              Due diligence incomplete —{" "}
+              {!preDone ? "finish “Before you start”" : "finish “After the job”"} checklist below before completing.
+            </p>
+          )}
+
+          <ul className="mt-3 space-y-1 text-xs text-cyan-900/70">
             {job.operative_en_route_at && (
               <li>On route: {new Date(job.operative_en_route_at).toLocaleString("en-GB")}</li>
             )}
@@ -419,25 +564,321 @@ export default function ContractorJobLayoutPage() {
         </section>
       )}
 
+      {/* Due diligence / inspection */}
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-100 px-5 py-5 sm:px-6">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-700">
+              <ClipboardCheck className="h-5 w-5" />
+            </div>
+            <div>
+              <SectionTitle>Job inspection</SectionTitle>
+              <p className="mt-1 text-sm text-slate-600">
+                Required checklist and notes for each stage. This is your due diligence record for Kleen and any dispute.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-4 flex gap-1 rounded-xl bg-slate-100 p-1">
+            {STAGE_TABS.map((tab) => {
+              const saved = reportByStage[tab.value];
+              const done =
+                saved && isChecklistComplete(parseChecklist(saved.checklist, tab.value), tab.value);
+              const active = stage === tab.value;
+              return (
+                <button
+                  key={tab.value}
+                  type="button"
+                  onClick={() => selectStage(tab.value)}
+                  className={`relative flex-1 rounded-lg px-2 py-2.5 text-center text-xs font-semibold transition sm:text-sm ${
+                    active
+                      ? "bg-white text-slate-900 shadow-sm"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  <span className="sm:hidden">{tab.short}</span>
+                  <span className="hidden sm:inline">{tab.label}</span>
+                  {done && (
+                    <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-emerald-500 align-middle" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="space-y-6 px-5 py-5 sm:px-6 sm:py-6">
+          {/* Checklist */}
+          <div>
+            <div className="flex flex-wrap items-end justify-between gap-2">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Due diligence checklist</h3>
+                <p className="mt-0.5 text-sm text-slate-500">All items required before saving this stage.</p>
+              </div>
+              <p
+                className={`text-xs font-semibold ${
+                  stageComplete ? "text-emerald-700" : "text-amber-700"
+                }`}
+              >
+                {stageProgress.done}/{stageProgress.total} complete
+              </p>
+            </div>
+            <ul className="mt-3 space-y-2">
+              {stageItems.map((item) => {
+                const checked = !!checklist[item.key];
+                return (
+                  <li key={item.key}>
+                    <label
+                      className={`flex cursor-pointer gap-3 rounded-xl border px-3 py-3 transition ${
+                        checked
+                          ? "border-emerald-200 bg-emerald-50/60"
+                          : "border-slate-200 bg-slate-50/50 hover:border-slate-300"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleCheck(item.key)}
+                        className="mt-1 h-4 w-4 shrink-0 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                      />
+                      <span className="min-w-0">
+                        <span className="block text-sm font-semibold text-slate-900">{item.label}</span>
+                        {item.hint && <span className="mt-0.5 block text-xs text-slate-500">{item.hint}</span>}
+                      </span>
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+
+          {stage !== "pre_job" && (
+            <div>
+              <label className="text-sm font-semibold text-slate-800">Outcome</label>
+              <CustomDropdown
+                className="mt-1.5"
+                value={outcome}
+                onChange={(v) => setOutcome(v as Outcome)}
+                options={OUTCOME_OPTIONS}
+              />
+            </div>
+          )}
+
+          <div>
+            <label className="text-sm font-semibold text-slate-800">
+              Stage notes <span className="font-normal text-slate-400">(optional)</span>
+            </label>
+            <textarea
+              value={summary}
+              onChange={(e) => setSummary(e.target.value)}
+              rows={3}
+              className="input-field mt-1.5"
+              placeholder={
+                stage === "pre_job"
+                  ? "Anything notable before you start…"
+                  : stage === "post_job"
+                    ? "How the job went, anything the customer should know…"
+                    : "Why the job could not start…"
+              }
+            />
+          </div>
+
+          <button
+            type="button"
+            disabled={savingReport || !stageComplete}
+            onClick={saveReport}
+            className="btn-primary w-full sm:w-auto"
+          >
+            {savingReport ? "Saving…" : stageComplete ? "Save this stage" : "Complete checklist to save"}
+          </button>
+
+          {/* Evidence — same stage container */}
+          <div className="border-t border-slate-100 pt-6">
+            <div className="flex items-start gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
+                <Camera className="h-4 w-4" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Photo &amp; video evidence</h3>
+                <p className="mt-0.5 text-sm text-slate-500">
+                  Upload images or short clips from this visit. Stored securely for Kleen review if needed.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="text-xs font-medium text-slate-600">Evidence type</label>
+                <CustomDropdown className="mt-1" value={itemType} onChange={setItemType} options={ITEM_TYPE_OPTIONS} />
+              </div>
+            </div>
+            <label className="mt-3 block text-xs font-medium text-slate-600">
+              Note
+              <textarea
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                rows={2}
+                className="input-field mt-1"
+                placeholder="Describe what the photo or video shows…"
+              />
+            </label>
+            <div className="mt-3">
+              <label className="text-xs font-medium text-slate-600">Upload files</label>
+              <input
+                type="file"
+                accept="image/*,video/mp4,video/quicktime,video/webm"
+                multiple
+                className="mt-1 block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-2 file:text-xs file:font-medium file:text-brand-700"
+                onChange={(e) => {
+                  const list = e.target.files;
+                  if (!list?.length) return;
+                  setPendingFiles((prev) => [...prev, ...Array.from(list)]);
+                  e.target.value = "";
+                }}
+              />
+              {pendingFiles.length > 0 && (
+                <p className="mt-1 text-xs text-slate-500">
+                  {pendingFiles.length} file{pendingFiles.length === 1 ? "" : "s"} ready to upload.
+                  <button
+                    type="button"
+                    className="ml-2 font-semibold text-brand-600 hover:underline"
+                    onClick={() => setPendingFiles([])}
+                  >
+                    Clear
+                  </button>
+                </p>
+              )}
+            </div>
+            <button
+              type="button"
+              disabled={savingItem || !note.trim()}
+              onClick={addItem}
+              className="btn-primary mt-4"
+            >
+              {savingItem ? "Uploading…" : "Add evidence"}
+            </button>
+
+            {currentStageEvidence.length > 0 && (
+              <ul className="mt-4 space-y-2">
+                {currentStageEvidence.map((i) => (
+                  <li key={i.id} className="rounded-xl border border-slate-100 bg-slate-50 p-3 text-sm">
+                    <p className="font-semibold capitalize text-slate-800">{i.item_type.replace(/_/g, " ")}</p>
+                    <p className="mt-1 text-slate-700">{i.note}</p>
+                    {i.photo_urls?.length > 0 && (
+                      <div className="mt-2 flex flex-col gap-2">
+                        {i.photo_urls.map((u) => (
+                          <div key={u} className="rounded-lg border border-slate-100 bg-white p-2">
+                            <JobEvidenceMedia pathOrUrl={u} />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* Timeline */}
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+        <SectionTitle>Saved reports</SectionTitle>
+        <p className="mt-1 text-sm text-slate-500">History of stages you’ve submitted for this job.</p>
+        <ul className="mt-4 space-y-3">
+          {reports.map((r) => {
+            const tab = STAGE_TABS.find((t) => t.value === r.stage);
+            const progress = checklistProgress(parseChecklist(r.checklist, r.stage), r.stage);
+            return (
+              <li key={r.id} className="rounded-xl border border-slate-200 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-base font-bold text-slate-900">{tab?.label || r.stage}</p>
+                  <p className="text-xs text-slate-500">{new Date(r.submitted_at).toLocaleString("en-GB")}</p>
+                </div>
+                <p className="mt-1 text-xs font-medium text-slate-600">
+                  Checklist {progress.done}/{progress.total}
+                  {r.job_outcome ? ` · ${r.job_outcome.replace(/_/g, " ")}` : ""}
+                </p>
+                {r.summary && <p className="mt-2 text-sm text-slate-700">{r.summary}</p>}
+                {(r.job_report_items || []).length > 0 && (
+                  <p className="mt-2 text-xs text-slate-500">
+                    {(r.job_report_items || []).length} evidence item
+                    {(r.job_report_items || []).length === 1 ? "" : "s"}
+                  </p>
+                )}
+              </li>
+            );
+          })}
+          {reports.length === 0 && (
+            <li className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+              No stages saved yet — complete a checklist above and save.
+            </li>
+          )}
+        </ul>
+      </section>
+
+      {showRateCustomer && (
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+          <SectionTitle>Rate this customer</SectionTitle>
+          <p className="mt-1 text-sm text-slate-500">Helps Kleen spot unfair behaviour. One rating per job.</p>
+          <label className="mt-4 block text-sm font-semibold text-slate-800">
+            Score (1–5)
+            <select
+              value={customerRating}
+              onChange={(e) => setCustomerRating(Number(e.target.value))}
+              className="input-field mt-1.5"
+            >
+              {[5, 4, 3, 2, 1].map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="mt-3 block text-sm font-semibold text-slate-800">
+            Comment <span className="font-normal text-slate-400">(optional)</span>
+            <textarea
+              value={customerComment}
+              onChange={(e) => setCustomerComment(e.target.value)}
+              rows={2}
+              className="input-field mt-1.5"
+            />
+          </label>
+          <button
+            type="button"
+            disabled={savingCustomerRating}
+            onClick={submitCustomerRating}
+            className="btn-primary mt-4"
+          >
+            {savingCustomerRating ? "Saving…" : "Submit rating"}
+          </button>
+        </section>
+      )}
+
+      {/* Cancel — bottom */}
       {showLive && (
-        <section className="rounded-2xl border border-red-200 bg-red-50/50 p-5 shadow-sm">
-          <h2 className="text-sm font-semibold text-red-900">Cancel this job</h2>
-          <p className="mt-1 text-xs text-red-800/90">
-            Only cancel if you cannot attend. Cancelling within 24 hours of the scheduled start incurs a £50 penalty
-            on your account.
+        <section
+          ref={cancelRef}
+          id="cancel-job"
+          className="scroll-mt-6 rounded-2xl border border-red-200 bg-red-50/40 p-5 shadow-sm sm:p-6"
+        >
+          <SectionTitle>Cancel this job</SectionTitle>
+          <p className="mt-1 text-sm text-red-900/80">
+            Only cancel if you cannot attend. Cancelling within 24 hours of the scheduled start incurs a £50 penalty on
+            your account.
             {cancelPreview?.isLateCancel && (
               <span className="mt-1 block font-semibold">
                 Late cancel — £{(cancelPreview.penaltyPence / 100).toFixed(2)} will be added to your penalty balance.
               </span>
             )}
           </p>
-          <label className="mt-3 block text-xs text-red-900/80">
+          <label className="mt-4 block text-sm font-semibold text-red-900">
             Reason (required)
             <textarea
               value={cancelReason}
               onChange={(e) => setCancelReason(e.target.value)}
               rows={3}
-              className="input-field mt-1"
+              className="input-field mt-1.5 border-red-200 bg-white"
               placeholder="Explain why you need to cancel…"
             />
           </label>
@@ -450,197 +891,12 @@ export default function ContractorJobLayoutPage() {
             type="button"
             disabled={cancelLoading || cancelReason.trim().length < 10}
             onClick={() => submitCancel(showCancelConfirm)}
-            className="mt-3 rounded-lg bg-red-700 px-3 py-2 text-xs font-semibold text-white hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+            className="mt-4 rounded-xl bg-red-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {cancelLoading ? "Cancelling…" : showCancelConfirm ? "Confirm cancellation" : "Cancel job"}
           </button>
         </section>
       )}
-
-      {/* Could not complete — keep simple; use portal token flow or admin for disputed */}
-      {showRateCustomer && (
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="text-sm font-semibold text-slate-900">Rate this customer</h2>
-          <p className="mt-1 text-xs text-slate-500">
-            Helps Kleen spot unfair behaviour. One rating per job.
-          </p>
-          <label className="mt-3 block text-xs text-slate-500">
-            Score (1–5)
-            <select
-              value={customerRating}
-              onChange={(e) => setCustomerRating(Number(e.target.value))}
-              className="input-field mt-1"
-            >
-              {[5, 4, 3, 2, 1].map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="mt-3 block text-xs text-slate-500">
-            Comment (optional)
-            <textarea
-              value={customerComment}
-              onChange={(e) => setCustomerComment(e.target.value)}
-              rows={2}
-              className="input-field mt-1"
-            />
-          </label>
-          <button
-            type="button"
-            disabled={savingCustomerRating}
-            onClick={submitCustomerRating}
-            className="btn-primary mt-3"
-          >
-            {savingCustomerRating ? "Saving…" : "Submit rating"}
-          </button>
-        </section>
-      )}
-
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-sm font-semibold text-slate-900">Create / update report</h2>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          <div>
-            <label className="text-xs text-slate-500">Report stage</label>
-            <CustomDropdown
-              className="mt-1"
-              value={stage}
-              onChange={(v) => setStage(v as ReportStage)}
-              options={STAGE_OPTIONS}
-            />
-          </div>
-          {stage !== "pre_job" && (
-            <div>
-              <label className="text-xs text-slate-500">Job outcome</label>
-              <CustomDropdown
-                className="mt-1"
-                value={outcome}
-                onChange={(v) => setOutcome(v as Outcome)}
-                options={OUTCOME_OPTIONS}
-              />
-            </div>
-          )}
-        </div>
-        <label className="mt-3 block text-xs text-slate-500">
-          Summary for this stage
-          <textarea
-            value={summary}
-            onChange={(e) => setSummary(e.target.value)}
-            rows={3}
-            className="input-field mt-1"
-            placeholder="Short summary of findings / work outcome"
-          />
-        </label>
-        <button
-          type="button"
-          disabled={savingReport}
-          onClick={saveReport}
-          className="btn-primary mt-3"
-        >
-          {savingReport ? "Saving…" : "Save report stage"}
-        </button>
-      </section>
-
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-sm font-semibold text-slate-900">Add evidence note</h2>
-        <p className="mt-1 text-xs text-slate-500">
-          Upload photos or short videos (stored securely in Kleen), or paste external URLs. Evidence supports dispute review.
-        </p>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          <div>
-            <label className="text-xs text-slate-500">Evidence type</label>
-            <CustomDropdown className="mt-1" value={itemType} onChange={setItemType} options={ITEM_TYPE_OPTIONS} />
-          </div>
-          <div>
-            <label className="text-xs text-slate-500">Linked stage</label>
-            <CustomDropdown className="mt-1" value={stage} onChange={(v) => setStage(v as ReportStage)} options={STAGE_OPTIONS} />
-          </div>
-        </div>
-        <label className="mt-3 block text-xs text-slate-500">
-          Note
-          <textarea
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            rows={3}
-            className="input-field mt-1"
-            placeholder="What did you find before starting, or what prevented completion?"
-          />
-        </label>
-        <div className="mt-3">
-          <label className="text-xs text-slate-500">Upload images or video (max ~50MB each)</label>
-          <input
-            type="file"
-            accept="image/*,video/mp4,video/quicktime,video/webm"
-            multiple
-            className="mt-1 block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-2 file:text-xs file:font-medium file:text-brand-700"
-            onChange={(e) => {
-              const list = e.target.files;
-              if (!list?.length) return;
-              setPendingFiles((prev) => [...prev, ...Array.from(list)]);
-              e.target.value = "";
-            }}
-          />
-          {pendingFiles.length > 0 && (
-            <p className="mt-1 text-xs text-slate-500">
-              {pendingFiles.length} file(s) will upload when you add evidence.
-            </p>
-          )}
-        </div>
-        <label className="mt-3 block text-xs text-slate-500">
-          Extra URLs (one per line, optional)
-          <textarea
-            value={photoUrlsRaw}
-            onChange={(e) => setPhotoUrlsRaw(e.target.value)}
-            rows={2}
-            className="input-field mt-1"
-            placeholder="https://..."
-          />
-        </label>
-        <button type="button" disabled={savingItem || !note.trim()} onClick={addItem} className="btn-primary mt-3">
-          {savingItem ? "Uploading…" : "Add evidence"}
-        </button>
-      </section>
-
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-sm font-semibold text-slate-900">Report timeline</h2>
-        <ul className="mt-3 space-y-4">
-          {reports.map((r) => (
-            <li key={r.id} className="rounded-xl border border-slate-200 p-4">
-              <p className="text-sm font-medium text-slate-900">
-                {STAGE_OPTIONS.find((o) => o.value === r.stage)?.label || r.stage}
-                {r.job_outcome ? ` · ${r.job_outcome.replace("_", " ")}` : ""}
-              </p>
-              <p className="mt-1 text-xs text-slate-500">{new Date(r.submitted_at).toLocaleString("en-GB")}</p>
-              {r.summary && <p className="mt-2 text-sm text-slate-700">{r.summary}</p>}
-              <ul className="mt-2 space-y-2">
-                {(r.job_report_items || []).map((i) => (
-                  <li key={i.id} className="rounded-lg bg-slate-50 p-2 text-sm">
-                    <p className="font-medium text-slate-800">{i.item_type.replace("_", " ")}</p>
-                    <p className="mt-1 text-slate-700">{i.note}</p>
-                    {i.photo_urls?.length > 0 && (
-                      <div className="mt-2 flex flex-col gap-2">
-                        {i.photo_urls.map((u) => (
-                          <div key={u} className="rounded-lg border border-slate-100 bg-white p-2">
-                            {u.startsWith("http") ? (
-                              <a href={u} target="_blank" rel="noreferrer" className="text-xs text-brand-600 underline break-all">
-                                {u}
-                              </a>
-                            ) : (
-                              <JobEvidenceMedia pathOrUrl={u} />
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </li>
-          ))}
-          {reports.length === 0 && <li className="text-sm text-slate-500">No reports yet.</li>}
-        </ul>
-      </section>
     </div>
   );
 }
