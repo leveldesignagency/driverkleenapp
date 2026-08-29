@@ -19,11 +19,14 @@ import {
 import {
   ArrowLeft,
   Camera,
+  Check,
   CheckCircle2,
   ClipboardCheck,
   Loader2,
+  MapPin,
   Navigation,
   AlertTriangle,
+  Truck,
 } from "lucide-react";
 
 type Outcome = "in_progress" | "completed" | "not_completed";
@@ -85,6 +88,21 @@ function SectionTitle({ children, id }: { children: React.ReactNode; id?: string
     <h2 id={id} className="text-lg font-bold tracking-tight text-slate-900 sm:text-xl">
       {children}
     </h2>
+  );
+}
+
+function CustomCheck({ checked }: { checked: boolean }) {
+  return (
+    <span
+      className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 transition ${
+        checked
+          ? "border-brand-600 bg-brand-600 text-white shadow-sm shadow-brand-600/25"
+          : "border-slate-300 bg-white text-transparent"
+      }`}
+      aria-hidden
+    >
+      <Check className="h-3 w-3" strokeWidth={3} />
+    </span>
   );
 }
 
@@ -448,8 +466,53 @@ export default function ContractorJobLayoutPage() {
   const stageItems = checklistForStage(stage);
   const currentStageEvidence = reportByStage[stage]?.job_report_items || [];
 
+  const progressSteps = [
+    {
+      key: "booked",
+      label: "Booked",
+      done: true,
+      active: !job.operative_en_route_at,
+      icon: "check" as const,
+    },
+    {
+      key: "en_route",
+      label: "On the way",
+      done: !!job.operative_en_route_at,
+      active: !!job.operative_en_route_at && !job.operative_arrived_at,
+      icon: "truck" as const,
+    },
+    {
+      key: "arrived",
+      label: "Arrived",
+      done: !!job.operative_arrived_at,
+      active: !!job.operative_arrived_at,
+      icon: "pin" as const,
+    },
+    {
+      key: "complete",
+      label: "Complete",
+      done: false,
+      active: false,
+      icon: "check" as const,
+    },
+  ];
+  const progressActiveIndex = progressSteps.findIndex((s) => s.active);
+  const progressFillIndex = progressActiveIndex >= 0 ? progressActiveIndex : progressSteps.filter((s) => s.done).length - 1;
+  const progressFillPct = Math.max(0, Math.min(100, (progressFillIndex / (progressSteps.length - 1)) * 100));
+  const statusLabel = !job.operative_en_route_at
+    ? "Booked"
+    : !job.operative_arrived_at
+      ? "On the way"
+      : "On site";
+  const scheduledLabel = job.preferred_date
+    ? new Date(job.preferred_date + (job.preferred_date.length === 10 ? "T12:00:00" : "")).toLocaleDateString(
+        "en-GB",
+        { weekday: "short", day: "numeric", month: "short", year: "numeric" },
+      )
+    : "—";
+
   return (
-    <div className="mx-auto max-w-3xl space-y-8 pb-10">
+    <div className="mx-auto max-w-6xl space-y-8 pb-10">
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -462,15 +525,7 @@ export default function ContractorJobLayoutPage() {
           </Link>
           <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">{job.reference}</h1>
           <p className="mt-1 break-words text-sm text-slate-600">{addressLine}</p>
-          <p className="mt-1 text-xs text-slate-500">
-            Scheduled{" "}
-            {job.preferred_date
-              ? new Date(job.preferred_date + (job.preferred_date.length === 10 ? "T12:00:00" : "")).toLocaleDateString(
-                  "en-GB",
-                  { weekday: "short", day: "numeric", month: "short", year: "numeric" },
-                )
-              : "—"}
-          </p>
+          <p className="mt-1 text-xs text-slate-500">Scheduled {scheduledLabel}</p>
         </div>
         {showLive && (
           <button
@@ -483,84 +538,161 @@ export default function ContractorJobLayoutPage() {
         )}
       </div>
 
-      {/* Live status */}
+      {/* Live status — marketing hero window chrome */}
       {showLive && (
-        <section className="rounded-2xl border border-cyan-200 bg-gradient-to-br from-cyan-50 to-white p-5 shadow-sm sm:p-6">
-          <SectionTitle>On-site progress</SectionTitle>
-          <p className="mt-1 text-sm text-cyan-900/80">
-            Update the customer as you go. Complete both due-diligence checklists before marking the job done.
-          </p>
-
-          <ol className="mt-5 grid gap-2 sm:grid-cols-3">
-            {[
-              { key: "en_route", label: "On the way", done: !!job.operative_en_route_at },
-              { key: "arrived", label: "Arrived", done: !!job.operative_arrived_at },
-              { key: "complete", label: "Complete", done: false },
-            ].map((step, i) => (
-              <li
-                key={step.key}
-                className={`rounded-xl border px-3 py-3 text-sm font-semibold ${
-                  step.done
-                    ? "border-emerald-200 bg-emerald-50 text-emerald-900"
-                    : "border-slate-200 bg-white text-slate-700"
-                }`}
-              >
-                <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Step {i + 1}</span>
-                <p className="mt-0.5 flex items-center gap-1.5">
-                  {step.done && <CheckCircle2 className="h-4 w-4 text-emerald-600" />}
-                  {step.label}
-                </p>
-              </li>
-            ))}
-          </ol>
-
-          <div className="mt-4 flex flex-wrap gap-2">
-            <button
-              type="button"
-              disabled={!!job.operative_en_route_at || fieldAction === "en_route"}
-              onClick={() => runField("en_route")}
-              className="inline-flex items-center gap-2 rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-cyan-600 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {fieldAction === "en_route" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Navigation className="h-4 w-4" />}
-              I&apos;m on the way
-            </button>
-            <button
-              type="button"
-              disabled={!job.operative_en_route_at || !!job.operative_arrived_at || fieldAction === "arrived"}
-              onClick={() => runField("arrived")}
-              className="inline-flex items-center gap-2 rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-cyan-600 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {fieldAction === "arrived" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              I&apos;ve arrived
-            </button>
-            <button
-              type="button"
-              disabled={!job.operative_arrived_at || fieldAction === "complete" || !preDone || !postDone}
-              onClick={() => runField("complete")}
-              title={!preDone || !postDone ? "Save both before & after checklists first" : undefined}
-              className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {fieldAction === "complete" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-              Mark job complete
-            </button>
+        <section>
+          <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <SectionTitle>On-site progress</SectionTitle>
+              <p className="mt-1 text-sm text-slate-600">
+                Update the customer as you go. Complete both due-diligence checklists before marking the job done.
+              </p>
+            </div>
           </div>
 
-          {(!preDone || !postDone) && job.operative_arrived_at && (
-            <p className="mt-3 flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">
-              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              Due diligence incomplete —{" "}
-              {!preDone ? "finish “Before you start”" : "finish “After the job”"} checklist below before completing.
-            </p>
-          )}
+          <div className="overflow-hidden rounded-[1.25rem] border border-slate-200/80 bg-white shadow-xl shadow-slate-900/10 ring-1 ring-white/80 sm:rounded-[1.5rem]">
+            <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50/90 px-4 py-3">
+              <span className="h-2.5 w-2.5 rounded-full bg-rose-400" aria-hidden />
+              <span className="h-2.5 w-2.5 rounded-full bg-amber-400" aria-hidden />
+              <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" aria-hidden />
+              <span className="ml-3 truncate text-xs font-medium text-slate-400">
+                contractor.kleenapp.co.uk · {job.reference}
+              </span>
+            </div>
 
-          <ul className="mt-3 space-y-1 text-xs text-cyan-900/70">
-            {job.operative_en_route_at && (
-              <li>On route: {new Date(job.operative_en_route_at).toLocaleString("en-GB")}</li>
-            )}
-            {job.operative_arrived_at && (
-              <li>Arrived: {new Date(job.operative_arrived_at).toLocaleString("en-GB")}</li>
-            )}
-          </ul>
+            <div className="space-y-5 p-5 sm:p-6">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-brand-600">Live job</p>
+                  <h3 className="mt-1 text-lg font-bold text-slate-900">{job.reference}</h3>
+                  <p className="mt-1 flex items-center gap-1.5 text-sm text-slate-500">
+                    <MapPin className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">
+                      {job.postcode}
+                      {job.preferred_date ? ` · ${scheduledLabel}` : ""}
+                    </span>
+                  </p>
+                </div>
+                <span className="shrink-0 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200/80">
+                  {statusLabel}
+                </span>
+              </div>
+
+              <div className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200/70 sm:p-5">
+                <div className="flex items-center justify-between text-xs font-medium text-slate-500">
+                  <span>Progress</span>
+                  <span className="text-brand-600">
+                    Step {Math.min(progressFillIndex + 1, progressSteps.length)} of {progressSteps.length}
+                  </span>
+                </div>
+                <div className="relative mt-5 w-full pt-1">
+                  <div
+                    className="absolute top-[1.125rem] h-1 rounded-full bg-slate-200"
+                    style={{ left: "12.5%", right: "12.5%" }}
+                    aria-hidden
+                  />
+                  <div
+                    className="absolute top-[1.125rem] h-1 rounded-full bg-brand-400 transition-all duration-500"
+                    style={{ left: "12.5%", width: `${progressFillPct * 0.75}%` }}
+                    aria-hidden
+                  />
+                  <ol className="relative grid w-full grid-cols-4">
+                    {progressSteps.map((step, i) => (
+                      <li key={step.key} className="flex flex-col items-center gap-2.5">
+                        <div
+                          className={[
+                            "relative z-10 flex h-9 w-9 items-center justify-center rounded-full text-xs font-bold",
+                            step.done
+                              ? step.active
+                                ? "bg-brand-600 text-white shadow-md shadow-brand-600/30 ring-4 ring-brand-600/15"
+                                : "bg-brand-100 text-brand-700 ring-4 ring-white"
+                              : step.active
+                                ? "bg-brand-600 text-white shadow-md shadow-brand-600/30 ring-4 ring-brand-600/15"
+                                : "bg-white text-slate-400 ring-4 ring-white",
+                          ].join(" ")}
+                        >
+                          {step.active && step.icon === "truck" ? (
+                            <Truck className="h-4 w-4" />
+                          ) : step.active && step.icon === "pin" ? (
+                            <MapPin className="h-4 w-4" />
+                          ) : step.done ? (
+                            <CheckCircle2 className="h-4 w-4" />
+                          ) : (
+                            i + 1
+                          )}
+                        </div>
+                        <span
+                          className={`w-full text-center text-[10px] font-medium leading-tight sm:text-[11px] ${
+                            step.active ? "text-brand-700" : step.done ? "text-brand-600" : "text-slate-400"
+                          }`}
+                        >
+                          {step.label}
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={!!job.operative_en_route_at || fieldAction === "en_route"}
+                  onClick={() => runField("en_route")}
+                  className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {fieldAction === "en_route" ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Navigation className="h-4 w-4" />
+                  )}
+                  I&apos;m on the way
+                </button>
+                <button
+                  type="button"
+                  disabled={!job.operative_en_route_at || !!job.operative_arrived_at || fieldAction === "arrived"}
+                  onClick={() => runField("arrived")}
+                  className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {fieldAction === "arrived" ? <Loader2 className="h-4 w-4 animate-spin" /> : <MapPin className="h-4 w-4" />}
+                  I&apos;ve arrived
+                </button>
+                <button
+                  type="button"
+                  disabled={!job.operative_arrived_at || fieldAction === "complete" || !preDone || !postDone}
+                  onClick={() => runField("complete")}
+                  title={!preDone || !postDone ? "Save both before & after checklists first" : undefined}
+                  className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {fieldAction === "complete" ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="h-4 w-4" />
+                  )}
+                  Mark job complete
+                </button>
+              </div>
+
+              {(!preDone || !postDone) && job.operative_arrived_at && (
+                <p className="flex items-start gap-2 rounded-xl bg-amber-50 px-3 py-2.5 text-xs text-amber-900 ring-1 ring-amber-200/70">
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  Due diligence incomplete —{" "}
+                  {!preDone ? "finish “Before you start”" : "finish “After the job”"} checklist below before completing.
+                </p>
+              )}
+
+              {(job.operative_en_route_at || job.operative_arrived_at) && (
+                <ul className="space-y-1 text-xs text-slate-500">
+                  {job.operative_en_route_at && (
+                    <li>On route: {new Date(job.operative_en_route_at).toLocaleString("en-GB")}</li>
+                  )}
+                  {job.operative_arrived_at && (
+                    <li>Arrived: {new Date(job.operative_arrived_at).toLocaleString("en-GB")}</li>
+                  )}
+                </ul>
+              )}
+            </div>
+          </div>
         </section>
       )}
 
@@ -628,24 +760,24 @@ export default function ContractorJobLayoutPage() {
                 const checked = !!checklist[item.key];
                 return (
                   <li key={item.key}>
-                    <label
-                      className={`flex cursor-pointer gap-3 rounded-xl border px-3 py-3 transition ${
+                    <button
+                      type="button"
+                      role="checkbox"
+                      aria-checked={checked}
+                      aria-label={item.label}
+                      onClick={() => toggleCheck(item.key)}
+                      className={`flex w-full cursor-pointer gap-3 rounded-xl border px-3 py-3 text-left transition outline-none focus-visible:ring-2 focus-visible:ring-brand-200 ${
                         checked
-                          ? "border-emerald-200 bg-emerald-50/60"
-                          : "border-slate-200 bg-slate-50/50 hover:border-slate-300"
+                          ? "border-brand-200 bg-brand-50/70"
+                          : "border-slate-200 bg-slate-50/50 hover:border-slate-300 hover:bg-white"
                       }`}
                     >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => toggleCheck(item.key)}
-                        className="mt-1 h-4 w-4 shrink-0 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
-                      />
+                      <CustomCheck checked={checked} />
                       <span className="min-w-0">
                         <span className="block text-sm font-semibold text-slate-900">{item.label}</span>
                         {item.hint && <span className="mt-0.5 block text-xs text-slate-500">{item.hint}</span>}
                       </span>
-                    </label>
+                    </button>
                   </li>
                 );
               })}
