@@ -14,7 +14,36 @@ import {
   ExternalLink,
   RefreshCw,
   Check,
+  CalendarDays,
+  Lock,
 } from "lucide-react";
+
+const QUOTE_PRICE_MIN = 25;
+const QUOTE_PRICE_MAX = 1500;
+const QUOTE_PRICE_STEP = 5;
+const QUOTE_DAYS_MIN = 0;
+const QUOTE_DAYS_MAX = 5;
+const QUOTE_HOURS_MIN = 0;
+const QUOTE_HOURS_MAX = 12;
+const QUOTE_HOURS_STEP = 0.25;
+const HOURS_PER_DAY = 8;
+
+function clamp(n: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, n));
+}
+
+function formatPounds(n: number) {
+  return `£${n.toFixed(n % 1 === 0 ? 0 : 2)}`;
+}
+
+function formatHourFraction(h: number) {
+  if (h % 1 === 0) return String(h);
+  return h.toFixed(2).replace(/\.?0+$/, "");
+}
+
+function totalEstimatedHours(days: number, hours: number) {
+  return days * HOURS_PER_DAY + hours;
+}
 
 type BrowseJob = {
   id: string;
@@ -368,18 +397,35 @@ function FilterCheck({
 }
 
 function JobRow({ job, onApplied }: { job: BrowseJob; onApplied: () => void }) {
-  const [price, setPrice] = useState("");
-  const [hours, setHours] = useState("");
-  const [avail, setAvail] = useState("");
+  const [pricePounds, setPricePounds] = useState(75);
+  const [estDays, setEstDays] = useState(0);
+  const [estHours, setEstHours] = useState(2);
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
+  const totalHours = totalEstimatedHours(estDays, estHours);
+
+  const resetQuoteForm = useCallback(() => {
+    setPricePounds(75);
+    setEstDays(0);
+    setEstHours(2);
+    setNotes("");
+  }, []);
+
+  const openQuote = () => {
+    resetQuoteForm();
+    setExpanded(true);
+  };
+
   const apply = async (e: React.FormEvent) => {
     e.preventDefault();
-    const pounds = Number(price);
-    if (!Number.isFinite(pounds) || pounds <= 0) {
-      alert("Enter a valid price (£)");
+    if (!Number.isFinite(pricePounds) || pricePounds < QUOTE_PRICE_MIN) {
+      alert(`Enter a price of at least ${formatPounds(QUOTE_PRICE_MIN)}`);
+      return;
+    }
+    if (totalHours <= 0) {
+      alert("Set an estimated duration (at least 30 minutes).");
       return;
     }
     setBusy(true);
@@ -389,9 +435,8 @@ function JobRow({ job, onApplied }: { job: BrowseJob; onApplied: () => void }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         jobId: job.id,
-        pricePence: Math.round(pounds * 100),
-        estimatedHours: hours ? Number(hours) : undefined,
-        availableDate: avail || undefined,
+        pricePence: Math.round(pricePounds * 100),
+        estimatedHours: totalHours,
         notes: notes.trim() || undefined,
       }),
     });
@@ -406,8 +451,20 @@ function JobRow({ job, onApplied }: { job: BrowseJob; onApplied: () => void }) {
   };
 
   const whenLabel = job.preferred_date
-    ? `${new Date(job.preferred_date).toLocaleDateString("en-GB")} · ${job.preferred_time?.slice(0, 5) || "Flexible"}`
+    ? `${new Date(job.preferred_date + (job.preferred_date.length === 10 ? "T12:00:00" : "")).toLocaleDateString("en-GB", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      })} · ${job.preferred_time?.slice(0, 5) || "Flexible"}`
     : "Date flexible";
+
+  const customerDateShort = job.preferred_date
+    ? new Date(job.preferred_date + (job.preferred_date.length === 10 ? "T12:00:00" : "")).toLocaleDateString(
+        "en-GB",
+        { weekday: "short", day: "numeric", month: "short", year: "numeric" },
+      )
+    : null;
 
   const needsService = job.matches_your_services === false;
   const locationLabel = [job.postcode, job.city].filter(Boolean).join(" · ");
@@ -475,7 +532,7 @@ function JobRow({ job, onApplied }: { job: BrowseJob; onApplied: () => void }) {
           ) : (
             <button
               type="button"
-              onClick={() => setExpanded((v) => !v)}
+              onClick={() => (expanded ? setExpanded(false) : openQuote())}
               className="inline-flex items-center justify-center rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-500"
             >
               {expanded ? "Close" : "Quote"}
@@ -485,64 +542,167 @@ function JobRow({ job, onApplied }: { job: BrowseJob; onApplied: () => void }) {
       </div>
 
       {expanded && !needsService && (
-        <form onSubmit={apply} className="mt-4 border-t border-slate-100 pt-4">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <label className="text-xs">
-              <span className="text-slate-500">Your price (£)</span>
+        <form onSubmit={apply} className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/80 p-4 sm:p-5">
+          <div className="space-y-6">
+            {/* Customer date — locked */}
+            <div className="rounded-xl border border-slate-200 bg-white px-4 py-4">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-700">
+                  <CalendarDays className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-slate-600">Customer&apos;s requested date</p>
+                  <p className="mt-1 text-xl font-bold text-slate-900 sm:text-2xl">
+                    {customerDateShort || "Flexible"}
+                  </p>
+                  {job.preferred_time && (
+                    <p className="mt-0.5 text-lg font-semibold text-brand-700">
+                      {job.preferred_time.slice(0, 5)}
+                    </p>
+                  )}
+                  <p className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-slate-500">
+                    <Lock className="h-3.5 w-3.5" />
+                    Fixed by the customer — your quote is for this date
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Price */}
+            <div className="rounded-xl border border-slate-200 bg-white px-4 py-4">
+              <label className="block">
+                <span className="text-sm font-semibold text-slate-700">Your payout price</span>
+                <div className="mt-2 flex items-baseline gap-1">
+                  <span className="text-2xl font-bold text-slate-400">£</span>
+                  <input
+                    type="number"
+                    step={QUOTE_PRICE_STEP}
+                    min={QUOTE_PRICE_MIN}
+                    max={QUOTE_PRICE_MAX}
+                    required
+                    value={pricePounds}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      if (!Number.isFinite(n)) return;
+                      setPricePounds(clamp(n, QUOTE_PRICE_MIN, QUOTE_PRICE_MAX));
+                    }}
+                    className="w-full max-w-[12rem] border-0 bg-transparent p-0 text-3xl font-bold tabular-nums text-slate-900 outline-none focus:ring-0 sm:text-4xl"
+                  />
+                </div>
+              </label>
               <input
-                type="number"
-                step="0.01"
-                min="0"
-                required
-                value={price}
-                onChange={(e) => setPrice(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                type="range"
+                min={QUOTE_PRICE_MIN}
+                max={QUOTE_PRICE_MAX}
+                step={QUOTE_PRICE_STEP}
+                value={pricePounds}
+                onChange={(e) => setPricePounds(Number(e.target.value))}
+                className="quote-range mt-4 w-full"
+                aria-label="Adjust price"
               />
-            </label>
-            <label className="text-xs">
-              <span className="text-slate-500">Est. hours</span>
-              <input
-                type="number"
-                step="0.25"
-                min="0"
-                value={hours}
-                onChange={(e) => setHours(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
-              />
-            </label>
-            <label className="text-xs">
-              <span className="text-slate-500">Earliest date</span>
-              <input
-                type="date"
-                value={avail}
-                onChange={(e) => setAvail(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
-              />
-            </label>
-            <label className="text-xs">
-              <span className="text-slate-500">Notes</span>
-              <input
+              <div className="mt-1.5 flex justify-between text-xs font-medium text-slate-400">
+                <span>{formatPounds(QUOTE_PRICE_MIN)}</span>
+                <span>{formatPounds(QUOTE_PRICE_MAX)}</span>
+              </div>
+            </div>
+
+            {/* Duration */}
+            <div className="rounded-xl border border-slate-200 bg-white px-4 py-4">
+              <div className="flex flex-wrap items-end justify-between gap-2">
+                <p className="text-sm font-semibold text-slate-700">Estimated time on site</p>
+                <p className="text-lg font-bold text-brand-700 sm:text-xl">
+                  {estDays > 0 && (
+                    <span>
+                      {estDays} day{estDays === 1 ? "" : "s"}
+                      {estHours > 0 ? " · " : ""}
+                    </span>
+                  )}
+                  {estHours > 0 && <span>{formatHourFraction(estHours)} hr</span>}
+                  {estDays === 0 && estHours === 0 && <span className="text-slate-400">Set below</span>}
+                  <span className="ml-2 text-sm font-semibold text-slate-500">
+                    ({formatHourFraction(totalHours)} hrs total)
+                  </span>
+                </p>
+              </div>
+
+              <div className="mt-5 space-y-5">
+                <div>
+                  <div className="mb-2 flex items-baseline justify-between">
+                    <span className="text-sm font-medium text-slate-600">Days</span>
+                    <span className="text-2xl font-bold tabular-nums text-slate-900">{estDays}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={QUOTE_DAYS_MIN}
+                    max={QUOTE_DAYS_MAX}
+                    step={1}
+                    value={estDays}
+                    onChange={(e) => setEstDays(Number(e.target.value))}
+                    className="quote-range w-full"
+                    aria-label="Estimated days"
+                  />
+                  <div className="mt-1.5 flex justify-between text-xs font-medium text-slate-400">
+                    <span>{QUOTE_DAYS_MIN} days</span>
+                    <span>{QUOTE_DAYS_MAX} days</span>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="mb-2 flex items-baseline justify-between">
+                    <span className="text-sm font-medium text-slate-600">Hours</span>
+                    <span className="text-2xl font-bold tabular-nums text-slate-900">
+                      {formatHourFraction(estHours)}
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={QUOTE_HOURS_MIN}
+                    max={QUOTE_HOURS_MAX}
+                    step={QUOTE_HOURS_STEP}
+                    value={estHours}
+                    onChange={(e) => setEstHours(Number(e.target.value))}
+                    className="quote-range w-full"
+                    aria-label="Estimated hours"
+                  />
+                  <div className="mt-1.5 flex justify-between text-xs font-medium text-slate-400">
+                    <span>{QUOTE_HOURS_MIN} hrs</span>
+                    <span>{QUOTE_HOURS_MAX} hrs</span>
+                  </div>
+                </div>
+              </div>
+              <p className="mt-3 text-xs text-slate-500">
+                Each day counts as {HOURS_PER_DAY} working hours. Total:{" "}
+                <strong className="text-slate-700">{formatHourFraction(totalHours)} hours</strong>.
+              </p>
+            </div>
+
+            {/* Notes */}
+            <label className="block rounded-xl border border-slate-200 bg-white px-4 py-4">
+              <span className="text-sm font-semibold text-slate-700">Notes for Kleen</span>
+              <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
-                placeholder="Optional"
+                rows={2}
+                className="mt-2 w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-base text-slate-900 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+                placeholder="Optional — access details, equipment, anything the customer should know…"
               />
             </label>
           </div>
-          <div className="mt-3 flex flex-wrap justify-end gap-2">
+
+          <div className="mt-5 flex flex-wrap justify-end gap-2 border-t border-slate-200 pt-4">
             <button
               type="button"
               onClick={() => setExpanded(false)}
-              className="rounded-lg px-3 py-2 text-xs font-medium text-slate-500 hover:bg-slate-100"
+              className="rounded-lg px-4 py-2.5 text-sm font-medium text-slate-500 hover:bg-white"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={busy}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-xs font-semibold text-white hover:bg-brand-500 disabled:opacity-50"
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-500 disabled:opacity-50"
             >
-              {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               {busy ? "Submitting…" : "Apply & quote"}
             </button>
           </div>

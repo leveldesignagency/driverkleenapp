@@ -15,11 +15,10 @@ export async function POST(request: Request) {
   if (!user?.email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await request.json().catch(() => ({}));
-  const { jobId, pricePence, estimatedHours, availableDate, notes } = body as {
+  const { jobId, pricePence, estimatedHours, notes } = body as {
     jobId?: string;
     pricePence?: number;
     estimatedHours?: number;
-    availableDate?: string;
     notes?: string;
   };
 
@@ -65,7 +64,7 @@ export async function POST(request: Request) {
   const candidate = jobWindow({
     jobId: job.id,
     reference: job.reference || job.id.slice(0, 8),
-    preferredDate: availableDate || job.preferred_date,
+    preferredDate: job.preferred_date,
     preferredTime: job.preferred_time,
     estimatedHours: estimatedHours ?? null,
   });
@@ -145,7 +144,7 @@ export async function POST(request: Request) {
     price_pence: pricePence,
     customer_price_pence: customerPricePence,
     estimated_hours: estimatedHours ?? null,
-    available_date: availableDate || null,
+    available_date: job.preferred_date || null,
     notes: notes?.trim() || null,
     operative_service_id: os.id,
   });
