@@ -17,6 +17,13 @@ import {
   type ReportStage,
 } from "@/lib/job-inspection-checklist";
 import {
+  CANNOT_START_CATEGORY_LABELS,
+  CANNOT_START_REASONS,
+  formatCannotStartReason,
+  isValidCannotStartReason,
+  type CannotStartReasonCode,
+} from "@/lib/cannot-start-reasons";
+import {
   ArrowLeft,
   Camera,
   Check,
@@ -27,6 +34,7 @@ import {
   Navigation,
   AlertTriangle,
   Truck,
+  Trash2,
 } from "lucide-react";
 
 type Outcome = "in_progress" | "completed" | "not_completed";
@@ -60,6 +68,7 @@ type ReportRow = {
   job_outcome: Outcome | null;
   summary: string | null;
   checklist: ChecklistState | Record<string, unknown> | null;
+  cannot_start_reason_code?: string | null;
   submitted_at: string;
   job_report_items: ReportItem[] | null;
 };
@@ -123,10 +132,12 @@ export default function ContractorJobLayoutPage() {
   stageRef.current = stage;
   const [summary, setSummary] = useState("");
   const [outcome, setOutcome] = useState<Outcome>("in_progress");
+  const [cannotStartReason, setCannotStartReason] = useState<CannotStartReasonCode | "">("");
   const [checklist, setChecklist] = useState<ChecklistState>(() => emptyChecklist("pre_job"));
   const [itemType, setItemType] = useState("damage");
   const [note, setNote] = useState("");
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
   const [fieldAction, setFieldAction] = useState<string | null>(null);
   const [customerRating, setCustomerRating] = useState(5);
   const [customerComment, setCustomerComment] = useState("");
@@ -173,6 +184,11 @@ export default function ContractorJobLayoutPage() {
       setStage(next);
       setSummary(existing?.summary || "");
       setOutcome((existing?.job_outcome as Outcome) || (next === "pre_job" ? "in_progress" : "completed"));
+      setCannotStartReason(
+        isValidCannotStartReason(existing?.cannot_start_reason_code)
+          ? existing!.cannot_start_reason_code!
+          : "",
+      );
       setChecklist(parseChecklist(existing?.checklist, next));
       setItemType(next === "post_job" ? "completion_note" : next === "cannot_start" ? "obstruction" : "damage");
     },
@@ -224,7 +240,7 @@ export default function ContractorJobLayoutPage() {
       return [];
     }
 
-    const [{ data: jobData }, { data: reportData }, { data: ratingRow }] = await Promise.all([
+    const [{ data: jobData }, reportRes, { data: ratingRow }] = await Promise.all([
       supabase
         .from("jobs")
         .select(
@@ -235,7 +251,7 @@ export default function ContractorJobLayoutPage() {
       supabase
         .from("job_reports")
         .select(
-          "id, stage, job_outcome, summary, checklist, submitted_at, job_report_items(id, item_type, note, photo_urls, created_at)",
+          "id, stage, job_outcome, summary, checklist, cannot_start_reason_code, submitted_at, job_report_items(id, item_type, note, photo_urls, created_at)",
         )
         .eq("job_id", jobId)
         .eq("operative_id", operativeId)
@@ -243,7 +259,18 @@ export default function ContractorJobLayoutPage() {
       supabase.from("job_customer_ratings").select("id").eq("job_id", jobId).maybeSingle(),
     ]);
 
-    const nextReports = (reportData as unknown as ReportRow[]) || [];
+    let nextReports = (reportRes.data as unknown as ReportRow[]) || [];
+    if (reportRes.error) {
+      const { data: fallback } = await supabase
+        .from("job_reports")
+        .select(
+          "id, stage, job_outcome, summary, checklist, submitted_at, job_report_items(id, item_type, note, photo_urls, created_at)",
+        )
+        .eq("job_id", jobId)
+        .eq("operative_id", operativeId)
+        .order("submitted_at", { ascending: false });
+      nextReports = (fallback as unknown as ReportRow[]) || [];
+    }
     setJob((jobData as JobRow) || null);
     setReports(nextReports);
     setHasCustomerRating(!!ratingRow);
@@ -291,27 +318,92 @@ export default function ContractorJobLayoutPage() {
       alert("Complete every checklist item for this stage before saving.");
       return;
     }
+    if (stage === "cannot_start" && !isValidCannotStartReason(cannotStartReason)) {
+      alert("Select why you could not start.");
+      return;
+    }
+    if (stage === "cannot_start" && cannotStartReason === "other" && summary.trim().length < 5) {
+      alert("Please add a short note explaining the “Other” reason.");
+      return;
+    }
+
     setSavingReport(true);
     const supabase = createClient();
+    const reasonText =
+      stage === "cannot_start"
+        ? formatCannotStartReason(cannotStartReason, summary)
+        : null;
     const payload = {
       job_id: jobId,
       operative_id: operativeId,
       stage,
       summary: summary.trim() || null,
-      job_outcome: stage === "pre_job" ? "in_progress" : outcome,
+      job_outcome: stage === "pre_job" ? "in_progress" : stage === "cannot_start" ? "not_completed" : outcome,
+      cannot_start_reason_code: stage === "cannot_start" ? cannotStartReason : null,
       checklist,
       submitted_at: new Date().toISOString(),
     };
     const { error } = await supabase.from("job_reports").upsert(payload, { onConflict: "job_id,operative_id,stage" });
-    setSavingReport(false);
     if (error) {
+      setSavingReport(false);
       alert(
-        error.message.includes("checklist")
-          ? "Checklist column not available yet — ask Kleen to apply the latest database migration."
+        error.message.includes("checklist") || error.message.includes("cannot_start_reason")
+          ? "Database needs the latest migration — ask Kleen to apply migration 058."
           : error.message,
       );
       return;
     }
+
+    if (stage === "cannot_start" && reasonText) {
+      const res = await fetch(`/api/contractor/jobs/${jobId}/field`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "incomplete",
+          reason: reasonText,
+          reasonCode: cannotStartReason,
+        }),
+      });
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setSavingReport(false);
+        alert(json.error || "Report saved, but could not flag the job as unable to start.");
+        await load().then((rows) => hydrateStage(stage, rows));
+        return;
+      }
+    }
+
+    setSavingReport(false);
+    await load().then((rows) => hydrateStage(stage, rows));
+  };
+
+  const deleteEvidenceItem = async (itemId: string) => {
+    if (!jobId) return;
+    if (!confirm("Delete this evidence item? This cannot be undone.")) return;
+    setDeletingItemId(itemId);
+    const supabase = createClient();
+    const { data: item } = await supabase
+      .from("job_report_items")
+      .select("id, photo_urls")
+      .eq("id", itemId)
+      .maybeSingle();
+    const { error } = await supabase.from("job_report_items").delete().eq("id", itemId);
+    if (error) {
+      setDeletingItemId(null);
+      alert(error.message);
+      return;
+    }
+    const paths = (item?.photo_urls || []).filter((p: string) => p && !p.startsWith("http"));
+    if (paths.length > 0) {
+      await fetch(`/api/contractor/jobs/${jobId}/evidence/delete`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paths }),
+      }).catch(() => {});
+    }
+    setDeletingItemId(null);
     await load().then((rows) => hydrateStage(stage, rows));
   };
 
@@ -784,7 +876,53 @@ export default function ContractorJobLayoutPage() {
             </ul>
           </div>
 
-          {stage !== "pre_job" && (
+          {stage === "cannot_start" ? (
+            <div>
+              <div className="flex flex-wrap items-end justify-between gap-2">
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Why couldn&apos;t you start?</h3>
+                  <p className="mt-0.5 text-sm text-slate-500">
+                    Pick the closest reason. The customer can rebook you for a new date.
+                  </p>
+                </div>
+              </div>
+              <div className="mt-3 space-y-4">
+                {(Object.keys(CANNOT_START_CATEGORY_LABELS) as Array<keyof typeof CANNOT_START_CATEGORY_LABELS>).map(
+                  (category) => {
+                    const items = CANNOT_START_REASONS.filter((r) => r.category === category);
+                    if (items.length === 0) return null;
+                    return (
+                      <div key={category}>
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          {CANNOT_START_CATEGORY_LABELS[category]}
+                        </p>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {items.map((reason) => {
+                            const active = cannotStartReason === reason.code;
+                            return (
+                              <button
+                                key={reason.code}
+                                type="button"
+                                onClick={() => setCannotStartReason(reason.code)}
+                                className={`rounded-xl border px-3 py-3 text-left transition outline-none focus-visible:ring-2 focus-visible:ring-brand-200 ${
+                                  active
+                                    ? "border-brand-400 bg-brand-50 ring-1 ring-brand-200"
+                                    : "border-slate-200 bg-white hover:border-slate-300"
+                                }`}
+                              >
+                                <span className="block text-sm font-semibold text-slate-900">{reason.label}</span>
+                                <span className="mt-0.5 block text-xs text-slate-500">{reason.hint}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  },
+                )}
+              </div>
+            </div>
+          ) : stage !== "pre_job" ? (
             <div>
               <label className="text-sm font-semibold text-slate-800">Outcome</label>
               <CustomDropdown
@@ -794,11 +932,14 @@ export default function ContractorJobLayoutPage() {
                 options={OUTCOME_OPTIONS}
               />
             </div>
-          )}
+          ) : null}
 
           <div>
             <label className="text-sm font-semibold text-slate-800">
-              Stage notes <span className="font-normal text-slate-400">(optional)</span>
+              {stage === "cannot_start" ? "Extra details" : "Stage notes"}{" "}
+              <span className="font-normal text-slate-400">
+                {stage === "cannot_start" && cannotStartReason === "other" ? "(required)" : "(optional)"}
+              </span>
             </label>
             <textarea
               value={summary}
@@ -810,18 +951,30 @@ export default function ContractorJobLayoutPage() {
                   ? "Anything notable before you start…"
                   : stage === "post_job"
                     ? "How the job went, anything the customer should know…"
-                    : "Why the job could not start…"
+                    : "Any extra context for Kleen and the customer…"
               }
             />
           </div>
 
           <button
             type="button"
-            disabled={savingReport || !stageComplete}
+            disabled={
+              savingReport ||
+              !stageComplete ||
+              (stage === "cannot_start" && !isValidCannotStartReason(cannotStartReason))
+            }
             onClick={saveReport}
             className="btn-primary w-full sm:w-auto"
           >
-            {savingReport ? "Saving…" : stageComplete ? "Save this stage" : "Complete checklist to save"}
+            {savingReport
+              ? "Saving…"
+              : stage === "cannot_start"
+                ? stageComplete && cannotStartReason
+                  ? "Submit couldn’t start"
+                  : "Select reason & complete checklist"
+                : stageComplete
+                  ? "Save this stage"
+                  : "Complete checklist to save"}
           </button>
 
           {/* Evidence — same stage container */}
@@ -894,8 +1047,25 @@ export default function ContractorJobLayoutPage() {
               <ul className="mt-4 space-y-2">
                 {currentStageEvidence.map((i) => (
                   <li key={i.id} className="rounded-xl border border-slate-100 bg-slate-50 p-3 text-sm">
-                    <p className="font-semibold capitalize text-slate-800">{i.item_type.replace(/_/g, " ")}</p>
-                    <p className="mt-1 text-slate-700">{i.note}</p>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-semibold capitalize text-slate-800">{i.item_type.replace(/_/g, " ")}</p>
+                        <p className="mt-1 text-slate-700">{i.note}</p>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={deletingItemId === i.id}
+                        onClick={() => deleteEvidenceItem(i.id)}
+                        className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-red-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+                      >
+                        {deletingItemId === i.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-3.5 w-3.5" />
+                        )}
+                        Delete
+                      </button>
+                    </div>
                     {i.photo_urls?.length > 0 && (
                       <div className="mt-2 flex flex-col gap-2">
                         {i.photo_urls.map((u) => (
@@ -929,7 +1099,11 @@ export default function ContractorJobLayoutPage() {
                 </div>
                 <p className="mt-1 text-xs font-medium text-slate-600">
                   Checklist {progress.done}/{progress.total}
-                  {r.job_outcome ? ` · ${r.job_outcome.replace(/_/g, " ")}` : ""}
+                  {r.stage === "cannot_start" && r.cannot_start_reason_code
+                    ? ` · ${formatCannotStartReason(r.cannot_start_reason_code)}`
+                    : r.job_outcome
+                      ? ` · ${r.job_outcome.replace(/_/g, " ")}`
+                      : ""}
                 </p>
                 {r.summary && <p className="mt-2 text-sm text-slate-700">{r.summary}</p>}
                 {(r.job_report_items || []).length > 0 && (

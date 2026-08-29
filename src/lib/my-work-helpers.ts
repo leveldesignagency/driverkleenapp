@@ -127,6 +127,9 @@ export function assignedTrackingBadge(
   if (status === "cancelled" || job.cancelled_at) {
     return { label: "Cancelled", className: "bg-red-100 text-red-800 ring-1 ring-red-200" };
   }
+  if (status === "could_not_start") {
+    return { label: "Couldn’t start", className: "bg-amber-100 text-amber-900 ring-1 ring-amber-200" };
+  }
   if (assignmentCompletedAt || ["completed", "funds_released"].includes(status)) {
     return { label: "Completed", className: "bg-emerald-100 text-emerald-900 ring-1 ring-emerald-200" };
   }

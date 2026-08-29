@@ -21,7 +21,11 @@ export async function runContractorFieldAction(
   supabase: SupabaseClient,
   jobId: string,
   action: FieldActionName,
-  opts?: { incompleteReason?: string; requireArrivedBeforeComplete?: boolean }
+  opts?: {
+    incompleteReason?: string;
+    cannotStartReasonCode?: string;
+    requireArrivedBeforeComplete?: boolean;
+  }
 ): Promise<{ ok: true } | { ok: false; error: string; status: number }> {
   const requireArrived = opts?.requireArrivedBeforeComplete !== false;
   const { data: job, error: jobErr } = await supabase
@@ -112,12 +116,15 @@ export async function runContractorFieldAction(
     if (j.operative_marked_incomplete_at) {
       return { ok: true };
     }
+    const reasonCode = opts?.cannotStartReasonCode?.trim() || null;
     await supabase
       .from("jobs")
       .update({
         operative_marked_incomplete_at: now,
         operative_incomplete_reason: reason,
-        status: "disputed",
+        cannot_start_reason_code: reasonCode,
+        // Not a payment dispute — visit blocked; customer can rebook same contractor.
+        status: "could_not_start",
       })
       .eq("id", j.id);
     return { ok: true };

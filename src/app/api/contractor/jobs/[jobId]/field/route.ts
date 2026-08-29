@@ -40,7 +40,7 @@ export async function POST(
     return NextResponse.json({ error: "You are not assigned to this job" }, { status: 403 });
   }
 
-  let body: { action?: string; reason?: string };
+  let body: { action?: string; reason?: string; reasonCode?: string };
   try {
     body = await request.json();
   } catch {
@@ -80,10 +80,32 @@ export async function POST(
     }
   }
 
+  if (action === "incomplete") {
+    const { data: reportRows } = await admin
+      .from("job_reports")
+      .select("stage, checklist, cannot_start_reason_code")
+      .eq("job_id", jobId)
+      .eq("operative_id", operative.id);
+    const { isChecklistComplete, parseChecklist } = await import(
+      "@/lib/job-inspection-checklist"
+    );
+    const blocked = reportRows?.find((r) => r.stage === "cannot_start");
+    if (
+      !blocked ||
+      !isChecklistComplete(parseChecklist(blocked.checklist, "cannot_start"), "cannot_start")
+    ) {
+      return NextResponse.json(
+        { error: "Complete and save the “Couldn’t start” due-diligence checklist first." },
+        { status: 400 },
+      );
+    }
+  }
+
   const before = await loadJobFieldEmailSnapshot(admin, jobId);
 
   const result = await runContractorFieldAction(admin, jobId, action, {
     incompleteReason: body.reason,
+    cannotStartReasonCode: body.reasonCode,
     requireArrivedBeforeComplete: true,
   });
 
