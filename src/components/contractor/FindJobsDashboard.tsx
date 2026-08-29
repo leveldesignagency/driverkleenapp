@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useContractorPortal } from "@/components/contractor/contractor-portal-context";
 import ContractorPageHeader from "@/components/contractor/ContractorPageHeader";
+import { AppDialog, type AppDialogVariant } from "@/components/ui/AppDialog";
 import {
   Loader2,
   MapPin,
@@ -351,7 +352,8 @@ export default function FindJobsDashboard() {
             <JobRow
               key={job.id}
               job={job}
-              onApplied={() => {
+              onRefresh={load}
+              onGoToMyWork={() => {
                 load();
                 router.push("/contractor/jobs");
               }}
@@ -396,13 +398,27 @@ function FilterCheck({
   );
 }
 
-function JobRow({ job, onApplied }: { job: BrowseJob; onApplied: () => void }) {
+function JobRow({
+  job,
+  onRefresh,
+  onGoToMyWork,
+}: {
+  job: BrowseJob;
+  onRefresh: () => void;
+  onGoToMyWork: () => void;
+}) {
   const [pricePounds, setPricePounds] = useState(75);
   const [estDays, setEstDays] = useState(0);
   const [estHours, setEstHours] = useState(2);
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [dialog, setDialog] = useState<{
+    variant: AppDialogVariant;
+    title: string;
+    message?: string;
+    success?: boolean;
+  } | null>(null);
 
   const totalHours = totalEstimatedHours(estDays, estHours);
 
@@ -413,6 +429,10 @@ function JobRow({ job, onApplied }: { job: BrowseJob; onApplied: () => void }) {
     setNotes("");
   }, []);
 
+  const showDialog = (variant: AppDialogVariant, title: string, message?: string, success = false) => {
+    setDialog({ variant, title, message, success });
+  };
+
   const openQuote = () => {
     resetQuoteForm();
     setExpanded(true);
@@ -421,11 +441,11 @@ function JobRow({ job, onApplied }: { job: BrowseJob; onApplied: () => void }) {
   const apply = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!Number.isFinite(pricePounds) || pricePounds < QUOTE_PRICE_MIN) {
-      alert(`Enter a price of at least ${formatPounds(QUOTE_PRICE_MIN)}`);
+      showDialog("error", "Price too low", `Enter a price of at least ${formatPounds(QUOTE_PRICE_MIN)}.`);
       return;
     }
     if (totalHours <= 0) {
-      alert("Set an estimated duration (at least 30 minutes).");
+      showDialog("error", "Duration required", "Set an estimated duration (at least 30 minutes).");
       return;
     }
     setBusy(true);
@@ -443,11 +463,17 @@ function JobRow({ job, onApplied }: { job: BrowseJob; onApplied: () => void }) {
     const json = (await res.json()) as { error?: string; message?: string };
     setBusy(false);
     if (!res.ok) {
-      alert(json.error || "Could not submit quote");
+      showDialog("error", "Could not submit quote", json.error || "Something went wrong. Please try again.");
       return;
     }
-    alert(json.message || "Quote submitted");
-    onApplied();
+    setExpanded(false);
+    showDialog(
+      "success",
+      "Quote submitted",
+      json.message || "Your quote was submitted. Kleen can send it to the customer when ready.",
+      true,
+    );
+    onRefresh();
   };
 
   const whenLabel = job.preferred_date
@@ -708,6 +734,27 @@ function JobRow({ job, onApplied }: { job: BrowseJob; onApplied: () => void }) {
           </div>
         </form>
       )}
+
+      <AppDialog
+        open={!!dialog}
+        onClose={() => setDialog(null)}
+        variant={dialog?.variant ?? "info"}
+        title={dialog?.title ?? ""}
+        message={dialog?.message}
+        primaryLabel={dialog?.success ? "My work" : "OK"}
+        onPrimary={() => {
+          if (dialog?.success) onGoToMyWork();
+          else setDialog(null);
+        }}
+        secondaryLabel={dialog?.success ? "Keep browsing" : undefined}
+        onSecondary={
+          dialog?.success
+            ? () => {
+                setDialog(null);
+              }
+            : undefined
+        }
+      />
     </li>
   );
 }
