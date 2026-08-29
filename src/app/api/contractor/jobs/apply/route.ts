@@ -147,23 +147,28 @@ export async function POST(request: Request) {
     available_date: job.preferred_date || null,
     notes: notes?.trim() || null,
     operative_service_id: os.id,
+    sent_to_customer_at: now,
   });
 
   if (respErr) {
     return NextResponse.json({ error: respErr.message }, { status: 400 });
   }
 
-  if (job.status === "pending") {
-    await admin.from("jobs").update({ status: "awaiting_quotes" }).eq("id", jobId);
-  } else if (job.status === "awaiting_quotes") {
-    await admin.from("jobs").update({ status: "quotes_received" }).eq("id", jobId);
-  }
+  // Marketplace self-apply: quote goes straight to the customer (DB trigger also promotes job).
+  await admin
+    .from("jobs")
+    .update({
+      status: "sent_to_customer",
+      quotes_sent_to_customer_at: now,
+    })
+    .eq("id", jobId)
+    .in("status", ["pending", "awaiting_quotes", "quotes_received"]);
 
   return NextResponse.json({
     ok: true,
     quoteRequestId,
     customerPricePence,
-    message: "Your quote was submitted. Kleen can send it to the customer when ready.",
+    message: "Your quote is live — the customer can view and accept it in their dashboard.",
   });
 }
 
