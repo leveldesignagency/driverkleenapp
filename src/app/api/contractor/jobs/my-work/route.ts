@@ -7,9 +7,12 @@ type JobEmbed = {
   id: string;
   reference: string;
   postcode: string;
+  city?: string | null;
   preferred_date: string;
+  preferred_time?: string | null;
   status?: string;
   accepted_quote_request_id?: string | null;
+  cancelled_at?: string | null;
   services?: { name: string } | { name: string }[] | null;
 };
 
@@ -40,14 +43,14 @@ export async function GET() {
   const operativeId = String(operative.id);
 
   const jobEmbed = `jobs!job_id (
-           id, reference, postcode, preferred_date, status, services ( name )
+           id, reference, postcode, city, preferred_date, preferred_time, status, accepted_quote_request_id, cancelled_at, services ( name )
          )`;
 
   const [qrRes, assignRes, acceptedQrRes] = await Promise.all([
     admin
       .from("quote_requests")
       .select(
-        `id, status, initiated_by, deadline, message, sent_at, operative_id,
+        `id, status, initiated_by, deadline, message, sent_at, operative_id, customer_declined_at,
          ${jobEmbed},
          quote_responses ( price_pence, estimated_hours, sent_to_customer_at )`,
       )
@@ -57,7 +60,7 @@ export async function GET() {
       .from("job_assignments")
       .select(
         `id, assigned_at, completed_at,
-         jobs!job_id ( id, reference, postcode, preferred_date, status, services ( name ) )`,
+         jobs!job_id ( id, reference, postcode, city, preferred_date, preferred_time, status, cancelled_at, services ( name ) )`,
       )
       .eq("operative_id", operativeId)
       .order("assigned_at", { ascending: false }),
