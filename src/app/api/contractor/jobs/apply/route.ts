@@ -3,6 +3,8 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import { resolveOperativeIdentity } from "@/lib/operative-identity";
 import { findConflict, jobWindow } from "@/lib/schedule-conflicts";
+import { sendCustomerQuotesReadyEmail } from "@/lib/resend-customer-job-updates";
+import { sendContractorQuoteSubmittedEmail } from "@/lib/resend-contractor-lifecycle";
 
 const CUSTOMER_MARKUP = 1.175;
 const OPEN_STATUSES = ["pending", "awaiting_quotes", "quotes_received"];
@@ -164,6 +166,14 @@ export async function POST(request: Request) {
     .eq("id", jobId)
     .in("status", ["pending", "awaiting_quotes", "quotes_received"]);
 
+  void sendMarketplaceQuoteEmails(admin, {
+    jobId,
+    contractorEmail: user.email,
+    contractorName: String(operative.full_name || ""),
+    payoutPence: pricePence,
+    customerPricePence,
+  }).catch((e) => console.error("sendMarketplaceQuoteEmails:", e));
+
   return NextResponse.json({
     ok: true,
     quoteRequestId,
@@ -230,4 +240,80 @@ async function loadOperativeDayWindows(
   }
 
   return windows;
+}
+
+async function countQuotesSentToCustomer(
+  admin: ReturnType<typeof createServiceRoleClient>,
+  jobId: string,
+): Promise<number> {
+  const { data } = await admin
+    .from("quote_requests")
+    .select("id, quote_responses(sent_to_customer_at)")
+    .eq("job_id", jobId);
+
+  let count = 0;
+  for (const qr of data || []) {
+    const resp = Array.isArray(qr.quote_responses) ? qr.quote_responses[0] : qr.quote_responses;
+    if (resp && (resp as { sent_to_customer_at?: string | null }).sent_to_customer_at) count += 1;
+  }
+  return Math.max(1, count);
+}
+
+async function sendMarketplaceQuoteEmails(
+  admin: ReturnType<typeof createServiceRoleClient>,
+  params: {
+    jobId: string;
+    contractorEmail: string;
+    contractorName: string;
+    payoutPence: number;
+    customerPricePence: number;
+  },
+) {
+  const [{ data: jobRow }, quoteCount] = await Promise.all([
+    admin
+      .from("jobs")
+      .select("id, reference, user_id, services(name)")
+      .eq("id", params.jobId)
+      .single(),
+    countQuotesSentToCustomer(admin, params.jobId),
+  ]);
+
+  if (!jobRow?.user_id) return;
+
+  const reference =
+    (jobRow.reference as string) || params.jobId.slice(0, 8).toUpperCase();
+  const svc = jobRow.services as { name?: string } | { name?: string }[] | null;
+  const serviceName = Array.isArray(svc) ? svc[0]?.name : svc?.name;
+
+  const { data: customer } = await admin
+    .from("profiles")
+    .select("email, full_name")
+    .eq("id", jobRow.user_id)
+    .single();
+
+  if (customer?.email) {
+    const customerResult = await sendCustomerQuotesReadyEmail({
+      toEmail: customer.email,
+      customerName: customer.full_name?.trim() || "there",
+      jobReference: reference,
+      jobId: params.jobId,
+      serviceName: serviceName || "Cleaning",
+      quoteCount,
+    });
+    if (!customerResult.ok) {
+      console.error("sendCustomerQuotesReadyEmail:", customerResult.error);
+    }
+  }
+
+  const contractorResult = await sendContractorQuoteSubmittedEmail({
+    toEmail: params.contractorEmail,
+    contractorName: params.contractorName,
+    jobReference: reference,
+    jobId: params.jobId,
+    payoutPence: params.payoutPence,
+    customerPricePence: params.customerPricePence,
+  });
+  if (!contractorResult.ok) {
+    console.error("sendContractorQuoteSubmittedEmail:", contractorResult.error);
+  }
 }

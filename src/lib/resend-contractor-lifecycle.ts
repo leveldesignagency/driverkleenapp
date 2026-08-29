@@ -69,6 +69,35 @@ export async function sendContractorApplicationSubmittedEmail(params: {
   });
 }
 
+/** Contractor: quote submitted successfully (marketplace / Find a Job). */
+export async function sendContractorQuoteSubmittedEmail(params: {
+  toEmail: string;
+  contractorName: string;
+  jobReference: string;
+  jobId: string;
+  payoutPence: number;
+  customerPricePence: number;
+}): Promise<EmailSendResult> {
+  const name = params.contractorName.trim() || "there";
+  const payout = `£${(params.payoutPence / 100).toFixed(2)}`;
+  const html = emailLayout({
+    title: `Quote sent — ${params.jobReference}`,
+    heading: "Your quote is live",
+    introHtml: `<p>Hi ${escapeHtml(name)}, your quote for job <strong>${escapeHtml(params.jobReference)}</strong> has been sent to the customer. They can review and accept it in their dashboard.</p>`,
+    rows: [
+      { label: "Reference", value: escapeHtml(params.jobReference) },
+      { label: "Your payout", value: payout },
+    ],
+    cta: { href: contractorPortalUrl("/contractor/jobs"), label: "View My work" },
+    footerNote: "We'll email you again if the customer accepts your quote.",
+  });
+  return sendKleenEmail({
+    to: params.toEmail,
+    subject: `Quote sent — ${params.jobReference}`,
+    html,
+  });
+}
+
 /** Contractor: quote was declined / not selected. */
 export async function sendContractorQuoteDeclinedEmail(params: {
   toEmail: string;
