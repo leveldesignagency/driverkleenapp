@@ -94,8 +94,6 @@ export default function ContractorJobLayoutPage() {
   const router = useRouter();
   const { operativeId, isVerified } = useContractorPortal();
   const cancelRef = useRef<HTMLElement | null>(null);
-  const stageRef = useRef<ReportStage>(stage);
-  stageRef.current = stage;
 
   const [loading, setLoading] = useState(true);
   const [job, setJob] = useState<JobRow | null>(null);
@@ -103,6 +101,8 @@ export default function ContractorJobLayoutPage() {
   const [savingReport, setSavingReport] = useState(false);
   const [savingItem, setSavingItem] = useState(false);
   const [stage, setStage] = useState<ReportStage>("pre_job");
+  const stageRef = useRef<ReportStage>("pre_job");
+  stageRef.current = stage;
   const [summary, setSummary] = useState("");
   const [outcome, setOutcome] = useState<Outcome>("in_progress");
   const [checklist, setChecklist] = useState<ChecklistState>(() => emptyChecklist("pre_job"));
