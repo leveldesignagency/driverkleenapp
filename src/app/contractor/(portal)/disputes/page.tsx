@@ -81,30 +81,17 @@ export default function ContractorDisputesPage() {
 
   const load = useCallback(async () => {
     if (!isVerified) return;
-    const supabase = createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    setMyUserId(user?.id ?? null);
-
-    const { data, error } = await supabase
-      .from("disputes")
-      .select(
-        `
-          id,
-          job_id,
-          user_id,
-          status,
-          reason,
-          resolution,
-          created_at,
-          jobs ( reference, service_id, postcode )
-        `,
-      )
-      .order("created_at", { ascending: false });
-
-    if (error) console.error(error);
-    setRows((data as unknown as DisputeRow[]) || []);
+    const res = await fetch("/api/contractor/disputes/list", { credentials: "include" });
+    const json = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      disputes?: DisputeRow[];
+    };
+    if (!res.ok) {
+      console.error(json.error || "disputes list failed");
+      setRows([]);
+    } else {
+      setRows(json.disputes || []);
+    }
     setLoading(false);
   }, [isVerified]);
 
@@ -118,6 +105,9 @@ export default function ContractorDisputesPage() {
     if (!isVerified) return;
     setLoading(true);
     void load();
+    createClient()
+      .auth.getUser()
+      .then(({ data: { user } }) => setMyUserId(user?.id ?? null));
   }, [load, isVerified]);
 
   const filtered = useMemo(() => {
@@ -128,14 +118,13 @@ export default function ContractorDisputesPage() {
 
   const loadMessages = async (disputeId: string) => {
     setLoadingMessages(disputeId);
-    const supabase = createClient();
-    const { data, error } = await supabase
-      .from("dispute_messages")
-      .select("id, sender_id, recipient_role, message, created_at")
-      .eq("dispute_id", disputeId)
-      .order("created_at", { ascending: true });
-    if (error) console.error(error);
-    setMessagesByDispute((prev) => ({ ...prev, [disputeId]: (data as MsgRow[]) || [] }));
+    const res = await fetch(
+      `/api/contractor/disputes/messages?disputeId=${encodeURIComponent(disputeId)}`,
+      { credentials: "include" },
+    );
+    const json = (await res.json().catch(() => ({}))) as { error?: string; messages?: MsgRow[] };
+    if (!res.ok) console.error(json.error || "messages failed");
+    setMessagesByDispute((prev) => ({ ...prev, [disputeId]: json.messages || [] }));
     setLoadingMessages(null);
   };
 
@@ -154,23 +143,16 @@ export default function ContractorDisputesPage() {
     if (!text) return;
     setSendingId(dispute.id);
     setSendError(null);
-    const supabase = createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      setSendingId(null);
-      return;
-    }
-    const { error } = await supabase.from("dispute_messages").insert({
-      dispute_id: dispute.id,
-      sender_id: user.id,
-      recipient_role: "admin",
-      message: text,
+    const res = await fetch("/api/contractor/disputes/list", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ disputeId: dispute.id, message: text }),
     });
+    const json = (await res.json().catch(() => ({}))) as { error?: string };
     setSendingId(null);
-    if (error) {
-      setSendError(error.message);
+    if (!res.ok) {
+      setSendError(json.error || "Could not send");
       return;
     }
     setReplyText((prev) => ({ ...prev, [dispute.id]: "" }));
@@ -194,7 +176,7 @@ export default function ContractorDisputesPage() {
     <div>
       <ContractorPageHeader
         title="Disputes"
-        description="Cases raised by customers on jobs you’re assigned to. Kleen mediates — you never message the customer directly."
+        description="When Kleen needs your input on a customer case, it appears here. You only message Kleen — never the customer."
       />
 
       <div className="mb-4 flex flex-wrap gap-2">
@@ -370,7 +352,9 @@ export default function ContractorDisputesPage() {
                   ? "No resolved disputes yet"
                   : "No disputes on your assigned jobs"}
             </p>
-            <p className="mt-1 text-xs text-slate-400">If a customer opens a dispute, it will appear here.</p>
+            <p className="mt-1 text-xs text-slate-400">
+              Cases appear after Kleen contacts you about a job.
+            </p>
           </li>
         )}
       </ul>
