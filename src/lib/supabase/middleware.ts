@@ -56,5 +56,17 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(signIn);
   }
 
+  const isSuspendedPath =
+    pathname === "/contractor/suspended" ||
+    pathname.startsWith("/api/account/restriction") ||
+    pathname.startsWith("/auth/");
+
+  if (user && !pathname.startsWith("/api/") && !isPublicContractorPath(pathname) && !isSuspendedPath) {
+    const { data: banned } = await supabase.rpc("is_auth_user_banned", { p_user_id: user.id });
+    if (banned === true) {
+      return NextResponse.redirect(new URL("/contractor/suspended", request.url));
+    }
+  }
+
   return response;
 }
