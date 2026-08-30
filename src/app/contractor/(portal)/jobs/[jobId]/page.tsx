@@ -35,6 +35,7 @@ import {
   AlertTriangle,
   Truck,
   Trash2,
+  Upload,
 } from "lucide-react";
 
 type Outcome = "in_progress" | "completed" | "not_completed";
@@ -137,6 +138,7 @@ export default function ContractorJobLayoutPage() {
   const [itemType, setItemType] = useState("damage");
   const [note, setNote] = useState("");
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const evidenceFileInputRef = useRef<HTMLInputElement | null>(null);
   const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
   const [fieldAction, setFieldAction] = useState<string | null>(null);
   const [customerRating, setCustomerRating] = useState(5);
@@ -1008,12 +1010,13 @@ export default function ContractorJobLayoutPage() {
               />
             </label>
             <div className="mt-3">
-              <label className="text-xs font-medium text-slate-600">Upload files</label>
+              <p className="text-xs font-medium text-slate-600">Upload files</p>
               <input
+                ref={evidenceFileInputRef}
                 type="file"
                 accept="image/*,video/mp4,video/quicktime,video/webm"
                 multiple
-                className="mt-1 block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-2 file:text-xs file:font-medium file:text-brand-700"
+                className="sr-only"
                 onChange={(e) => {
                   const list = e.target.files;
                   if (!list?.length) return;
@@ -1021,17 +1024,37 @@ export default function ContractorJobLayoutPage() {
                   e.target.value = "";
                 }}
               />
+              <button
+                type="button"
+                onClick={() => evidenceFileInputRef.current?.click()}
+                className="mt-1.5 inline-flex items-center gap-2 rounded-xl border border-brand-200 bg-brand-50 px-4 py-2.5 text-sm font-semibold text-brand-800 shadow-sm transition hover:border-brand-300 hover:bg-brand-100 hover:text-brand-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+              >
+                <Upload className="h-4 w-4" />
+                Choose files
+              </button>
+              <p className="mt-1.5 text-xs text-slate-500">Photos or short video (MP4, MOV, WebM).</p>
               {pendingFiles.length > 0 && (
-                <p className="mt-1 text-xs text-slate-500">
-                  {pendingFiles.length} file{pendingFiles.length === 1 ? "" : "s"} ready to upload.
-                  <button
-                    type="button"
-                    className="ml-2 font-semibold text-brand-600 hover:underline"
-                    onClick={() => setPendingFiles([])}
-                  >
-                    Clear
-                  </button>
-                </p>
+                <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold text-slate-700">
+                      {pendingFiles.length} file{pendingFiles.length === 1 ? "" : "s"} ready
+                    </p>
+                    <button
+                      type="button"
+                      className="text-xs font-semibold text-brand-700 hover:text-brand-800 hover:underline"
+                      onClick={() => setPendingFiles([])}
+                    >
+                      Clear
+                    </button>
+                  </div>
+                  <ul className="mt-1 space-y-0.5">
+                    {pendingFiles.map((f, i) => (
+                      <li key={`${f.name}-${i}`} className="truncate text-xs text-slate-600">
+                        {f.name}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               )}
             </div>
             <button
