@@ -30,6 +30,7 @@ export type OperativeOnboardingRow = {
   utr_number?: string | null;
   id_document_storage_path?: string | null;
   contractor_terms_accepted_at?: string | null;
+  phone_verified_at?: string | null;
   submitted_for_review_at?: string | null;
 };
 
@@ -78,7 +79,7 @@ function isBusiness(operative: OperativeOnboardingRow): boolean {
 }
 
 function phoneOk(operative: OperativeOnboardingRow): boolean {
-  return String(operative.phone ?? "").replace(/\D/g, "").length >= 10;
+  return Boolean(operative.phone_verified_at);
 }
 
 function identityOk(operative: OperativeOnboardingRow): boolean {
@@ -174,7 +175,7 @@ export function validateContractorOnboarding(
       ? "Add company/trading name and Companies House number."
       : "Add your business or trading name.";
   }
-  if (!phoneOk(operative)) return "Add a UK phone number.";
+  if (!phoneOk(operative)) return "Verify your UK mobile number with the SMS code.";
   if (!addressOk(operative)) return "Add your business address.";
   if (!verificationOk(operative, personnel)) {
     return isBusiness(operative)

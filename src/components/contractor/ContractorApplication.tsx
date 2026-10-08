@@ -30,6 +30,9 @@ import {
   MapPin,
   X,
 } from "lucide-react";
+import OutOfAreaGate from "@/components/service-area/OutOfAreaGate";
+import { UK_POSTCODE_RE } from "@/lib/format-uk-address";
+import { extractUkPostcode } from "@/lib/service-area-kent";
 
 const SORT_CODE_LENGTH = 6;
 const ACCOUNT_NUMBER_LENGTH = 8;
@@ -73,6 +76,11 @@ export default function ContractorApplication({
   const [vatNumber, setVatNumber] = useState("");
   const [phone, setPhone] = useState("");
   const [registeredAddress, setRegisteredAddress] = useState("");
+  const [businessPostcode, setBusinessPostcode] = useState("");
+  const [outOfAreaOpen, setOutOfAreaOpen] = useState(false);
+  const [outOfAreaLabel, setOutOfAreaLabel] = useState<string | null>(null);
+  const [outOfAreaPostcode, setOutOfAreaPostcode] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState("");
   const [idDocumentPath, setIdDocumentPath] = useState<string | null>(null);
   const [personnel, setPersonnel] = useState<OperativePersonnelRow[]>([]);
   const [areaInput, setAreaInput] = useState("");
@@ -123,7 +131,17 @@ export default function ContractorApplication({
     setVatNumber(String(op.vat_number ?? ""));
     setPhone(String(op.phone ?? ""));
     setRegisteredAddress(String(op.registered_address ?? ""));
+    const existingPc =
+      String((op as { base_postcode?: string | null }).base_postcode ?? "").trim() ||
+      extractUkPostcode(String(op.registered_address ?? "")) ||
+      "";
+    setBusinessPostcode(existingPc);
     setIdDocumentPath(op.id_document_storage_path || null);
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    setUserEmail(user?.email || "");
     setServiceAreas(Array.isArray(op.service_areas) ? op.service_areas : []);
     setBankAccountName(String(op.bank_account_name ?? ""));
     setBankSortCode(String(op.bank_sort_code ?? "").replace(/\D/g, "").slice(0, SORT_CODE_LENGTH));
@@ -565,7 +583,7 @@ export default function ContractorApplication({
             {activeStep === "contact" && (
               <StepSection
                 title="Contact & business address"
-                description="How Kleen and customers can reach you."
+                description="How Kleen and customers can reach you. We currently operate in Kent only."
                 onBack={() => setActiveStep("company")}
                 onContinue={async () => {
                   if (phone.replace(/\D/g, "").length < 10) {
@@ -576,10 +594,41 @@ export default function ContractorApplication({
                     setError("Enter your business address.");
                     return;
                   }
+                  const pc = businessPostcode.trim() || extractUkPostcode(registeredAddress) || "";
+                  if (!pc || !UK_POSTCODE_RE.test(pc)) {
+                    setError("Enter a valid UK postcode for your business address.");
+                    return;
+                  }
                   setSaving(true);
                   setError(null);
                   try {
-                    await saveOperative({ phone: phone.trim(), registered_address: registeredAddress.trim() });
+                    const areaRes = await fetch(
+                      `/api/service-area/check?postcode=${encodeURIComponent(pc)}`,
+                      { credentials: "include" },
+                    );
+                    const areaJson = (await areaRes.json().catch(() => ({}))) as {
+                      inKent?: boolean;
+                      areaLabel?: string | null;
+                      postcode?: string;
+                      error?: string;
+                    };
+                    if (!areaRes.ok) {
+                      setError(areaJson.error || "Could not verify your area.");
+                      return;
+                    }
+                    if (!areaJson.inKent) {
+                      setOutOfAreaPostcode(areaJson.postcode || pc);
+                      setOutOfAreaLabel(areaJson.areaLabel || null);
+                      setOutOfAreaOpen(true);
+                      return;
+                    }
+                    const resolvedPc = areaJson.postcode || pc;
+                    setBusinessPostcode(resolvedPc);
+                    await saveOperative({
+                      phone: phone.trim(),
+                      registered_address: registeredAddress.trim(),
+                      base_postcode: resolvedPc,
+                    });
                     setActiveStep("verification");
                   } catch (e) {
                     setError(e instanceof Error ? e.message : "Could not save");
@@ -590,6 +639,12 @@ export default function ContractorApplication({
                 saving={saving}
               >
                 <Field label="UK phone number" value={phone} onChange={setPhone} placeholder="e.g. 07700 900123" />
+                <Field
+                  label="Business postcode (Kent)"
+                  value={businessPostcode}
+                  onChange={(v) => setBusinessPostcode(v.toUpperCase())}
+                  placeholder="e.g. ME14 1XX"
+                />
                 <label className="block">
                   <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Business address</span>
                   <textarea
@@ -597,6 +652,7 @@ export default function ContractorApplication({
                     onChange={(e) => setRegisteredAddress(e.target.value)}
                     rows={4}
                     className="mt-1.5 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm shadow-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                    placeholder="Street, town — must be in Kent"
                   />
                 </label>
               </StepSection>
@@ -1138,6 +1194,16 @@ export default function ContractorApplication({
           </div>
         </main>
       </div>
+
+      <OutOfAreaGate
+        open={outOfAreaOpen}
+        audience="contractor"
+        source="contractor_onboarding"
+        postcode={outOfAreaPostcode}
+        areaLabel={outOfAreaLabel}
+        defaultEmail={userEmail}
+        onDismiss={() => setOutOfAreaOpen(false)}
+      />
     </div>
   );
 }

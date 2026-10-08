@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useContractorPortal } from "@/components/contractor/contractor-portal-context";
 import { useNotifications } from "@/lib/notifications";
+import PhoneVerificationPanel from "@/components/auth/PhoneVerificationPanel";
 import { Loader2 } from "lucide-react";
 
 type ContractorType = "sole_trader" | "business";
@@ -15,7 +16,6 @@ export default function ContractorProfilePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [fullName, setFullName] = useState("");
-  const [phone, setPhone] = useState("");
   const [contractorType, setContractorType] = useState<ContractorType>("sole_trader");
   const [companyName, setCompanyName] = useState("");
   const [hourlyRate, setHourlyRate] = useState("");
@@ -40,7 +40,6 @@ export default function ContractorProfilePage() {
       const { data: op } = await supabase.from("operatives").select("*").eq("id", operativeId).single();
       if (op) {
         setFullName(op.full_name || "");
-        setPhone(op.phone || "");
         setContractorType((op.contractor_type as ContractorType) || "sole_trader");
         setCompanyName(op.company_name || "");
         setHourlyRate(op.hourly_rate != null ? String(op.hourly_rate) : "");
@@ -73,7 +72,6 @@ export default function ContractorProfilePage() {
     const payload = {
       full_name: fullName.trim(),
       email: (authEmail || user?.email || "").trim() || undefined,
-      phone: phone.trim() || null,
       contractor_type: contractorType,
       company_name: companyName.trim() || null,
       hourly_rate: hourlyRate ? Math.round(Number(hourlyRate)) : null,
@@ -158,14 +156,9 @@ export default function ContractorProfilePage() {
               </p>
               <p className="mt-1 text-xs text-slate-500">To change it, contact Kleen or use account recovery from the customer sign-in flow.</p>
             </div>
-            <label className="block">
-              <span className="text-xs font-medium text-slate-500">Phone</span>
-              <input
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-              />
-            </label>
+            <div className="sm:col-span-2">
+              <PhoneVerificationPanel target="operative" />
+            </div>
           </div>
         </div>
 

@@ -4,6 +4,7 @@ import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import { validateContractorOnboarding } from "@/lib/contractor-onboarding";
 import { sendAdminContractorReviewEmail } from "@/lib/resend-admin-notify";
 import { sendContractorApplicationSubmittedEmail } from "@/lib/resend-contractor-lifecycle";
+import { checkPostcodeIsKent, extractUkPostcode } from "@/lib/service-area-kent";
 
 function isMissingSubmittedForReviewColumn(message: string) {
   const m = message.toLowerCase();
@@ -55,6 +56,30 @@ export async function POST() {
 
   if (!operative.contractor_terms_accepted_at) {
     return NextResponse.json({ error: "Accept the contractor terms before submitting." }, { status: 400 });
+  }
+
+  if (!operative.phone_verified_at) {
+    return NextResponse.json(
+      { error: "Verify your mobile number before submitting for review." },
+      { status: 400 },
+    );
+  }
+
+  const postcode =
+    String(operative.base_postcode || "").trim() ||
+    extractUkPostcode(String(operative.registered_address || "")) ||
+    "";
+  const kent = await checkPostcodeIsKent(postcode);
+  if (!kent.ok || !kent.inKent) {
+    return NextResponse.json(
+      {
+        error: kent.ok
+          ? "Kleen currently only accepts contractors based in Kent, England."
+          : kent.error,
+        code: "outside_service_area",
+      },
+      { status: 403 },
+    );
   }
 
   const admin = createServiceRoleClient();
