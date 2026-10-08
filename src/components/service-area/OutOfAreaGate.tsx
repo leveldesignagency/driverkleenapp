@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { MapPinOff, Loader2, Mail, CheckCircle2, X } from "lucide-react";
+import { isLocalWaitlistJoined, markLocalWaitlistJoined } from "@/lib/waitlist-local";
 
 type Props = {
   open: boolean;
@@ -26,17 +27,46 @@ export default function OutOfAreaGate({
 }: Props) {
   const [email, setEmail] = useState(defaultEmail || "");
   const [busy, setBusy] = useState(false);
+  const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [joined, setJoined] = useState(false);
 
   useEffect(() => {
-    if (open) {
-      setEmail(defaultEmail || "");
-      setError(null);
-      setJoined(false);
-      setBusy(false);
-    }
-  }, [open, defaultEmail]);
+    if (!open) return;
+
+    const seed = (defaultEmail || "").trim();
+    setEmail(seed);
+    setError(null);
+    setBusy(false);
+
+    const localHit = seed ? isLocalWaitlistJoined(audience, seed) : false;
+    setJoined(localHit);
+
+    if (!seed) return;
+
+    let cancelled = false;
+    setChecking(true);
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/service-area/waitlist?email=${encodeURIComponent(seed)}&audience=${encodeURIComponent(audience)}`,
+          { credentials: "include" },
+        );
+        const json = (await res.json().catch(() => ({}))) as { joined?: boolean };
+        if (cancelled) return;
+        if (res.ok && json.joined) {
+          markLocalWaitlistJoined(audience, seed);
+          setJoined(true);
+        }
+      } finally {
+        if (!cancelled) setChecking(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, defaultEmail, audience]);
 
   if (!open) return null;
 
@@ -60,6 +90,7 @@ export default function OutOfAreaGate({
         setError(json.error || "Could not save your email.");
         return;
       }
+      markLocalWaitlistJoined(audience, email);
       setJoined(true);
       onJoined?.();
     } finally {
@@ -85,38 +116,67 @@ export default function OutOfAreaGate({
             <X className="h-4 w-4" />
           </button>
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white shadow-sm ring-1 ring-slate-200/80">
-            <MapPinOff className="h-6 w-6 text-brand-600" />
+            {joined ? (
+              <CheckCircle2 className="h-6 w-6 text-emerald-600" />
+            ) : (
+              <MapPinOff className="h-6 w-6 text-brand-600" />
+            )}
           </div>
           <h2 id="out-of-area-title" className="mt-4 text-xl font-bold text-slate-900">
-            Not in our area yet
+            {joined ? "You're on the waitlist" : "Not in our area yet"}
           </h2>
           <p className="mt-2 text-sm leading-relaxed text-slate-600">
-            Kleen is launching in <strong className="font-semibold text-slate-800">Kent, England</strong> only
-            for now
-            {areaLabel ? (
+            {joined ? (
               <>
-                {" "}
-                — <span className="text-slate-700">{areaLabel}</span> is outside our current coverage
+                We&apos;ll reach out when Kleen is available in your area
+                {areaLabel ? (
+                  <>
+                    {" "}
+                    (<span className="text-slate-700">{areaLabel}</span>)
+                  </>
+                ) : postcode ? (
+                  <>
+                    {" "}
+                    (<span className="font-mono text-slate-700">{postcode}</span>)
+                  </>
+                ) : null}
+                .
               </>
-            ) : postcode ? (
+            ) : (
               <>
-                {" "}
-                — <span className="font-mono text-slate-700">{postcode}</span> is outside Kent
+                Kleen is launching in <strong className="font-semibold text-slate-800">Kent, England</strong> only
+                for now
+                {areaLabel ? (
+                  <>
+                    {" "}
+                    — <span className="text-slate-700">{areaLabel}</span> is outside our current coverage
+                  </>
+                ) : postcode ? (
+                  <>
+                    {" "}
+                    — <span className="font-mono text-slate-700">{postcode}</span> is outside Kent
+                  </>
+                ) : null}
+                .
               </>
-            ) : null}
-            .
+            )}
           </p>
         </div>
 
         <div className="space-y-4 px-6 py-5">
-          {joined ? (
+          {checking && !joined ? (
+            <div className="flex items-center justify-center gap-2 py-6 text-sm text-slate-500">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Checking waitlist…
+            </div>
+          ) : joined ? (
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
               <p className="flex items-center gap-2 text-sm font-semibold text-emerald-800">
                 <CheckCircle2 className="h-4 w-4 shrink-0" />
-                You&apos;re on the list
+                You&apos;re already on the list
               </p>
-              <p className="mt-1 text-xs text-emerald-700">
-                We&apos;ll email you when Kleen opens in your area.
+              <p className="mt-1 text-xs leading-relaxed text-emerald-700">
+                No need to sign up again — we&apos;ll email you when we expand into your area.
               </p>
               <button
                 type="button"
