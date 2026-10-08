@@ -29,9 +29,9 @@ type JobNested = {
 type DisputeRow = {
   id: string;
   job_id: string;
-  user_id: string;
   status: DisputeStatus;
-  reason: string;
+  /** Kleen-mediated summary — never the customer's raw reason. */
+  summary: string;
   resolution: string | null;
   created_at: string;
   jobs: JobNested | JobNested[] | null;
@@ -245,7 +245,7 @@ export default function ContractorDisputesPage() {
                       {svc?.name ?? job?.service_id}
                       {job?.postcode ? ` · ${job.postcode}` : ""}
                     </p>
-                    <p className="mt-1 line-clamp-2 text-sm text-slate-700">{d.reason}</p>
+                    <p className="mt-1 line-clamp-2 text-sm text-slate-700">{d.summary}</p>
                     <p className="mt-1 text-xs text-slate-400">{new Date(d.created_at).toLocaleString("en-GB")}</p>
                   </div>
                 </div>
@@ -310,27 +310,33 @@ export default function ContractorDisputesPage() {
                         <p className="mt-2 text-xs text-red-600">{sendError}</p>
                       )}
                       {!resolved ? (
-                        <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end">
-                          <textarea
-                            value={replyText[d.id] || ""}
-                            onChange={(e) => setReplyText((prev) => ({ ...prev, [d.id]: e.target.value }))}
-                            placeholder="Send message to Kleen…"
-                            rows={2}
-                            className="input-field min-h-[72px] flex-1 resize-y"
-                          />
-                          <button
-                            type="button"
-                            disabled={sendingId === d.id || !(replyText[d.id] || "").trim()}
-                            onClick={() => sendReply(d)}
-                            className="btn-primary h-fit w-full shrink-0 gap-2 px-4 py-2.5 sm:w-auto sm:self-end"
-                          >
-                            {sendingId === d.id ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Send className="h-4 w-4" />
-                            )}
-                            Send
-                          </button>
+                        <div className="mt-4 space-y-2">
+                          <p className="text-xs text-slate-500">
+                            Reply with your account of events and describe any photos already on the job report.
+                            Open the job to add or review evidence.
+                          </p>
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                            <textarea
+                              value={replyText[d.id] || ""}
+                              onChange={(e) => setReplyText((prev) => ({ ...prev, [d.id]: e.target.value }))}
+                              placeholder="Your response and evidence notes for Kleen…"
+                              rows={3}
+                              className="input-field min-h-[88px] flex-1 resize-y"
+                            />
+                            <button
+                              type="button"
+                              disabled={sendingId === d.id || !(replyText[d.id] || "").trim()}
+                              onClick={() => sendReply(d)}
+                              className="btn-primary h-fit w-full shrink-0 gap-2 px-4 py-2.5 sm:w-auto sm:self-end"
+                            >
+                              {sendingId === d.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Send className="h-4 w-4" />
+                              )}
+                              Send evidence
+                            </button>
+                          </div>
                         </div>
                       ) : (
                         <p className="mt-3 text-xs text-slate-500">This dispute is closed — messaging is disabled.</p>

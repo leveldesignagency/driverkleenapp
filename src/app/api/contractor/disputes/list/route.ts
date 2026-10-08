@@ -48,12 +48,20 @@ export async function GET() {
   const { data: opMsgs } = candidateIds.length
     ? await admin
         .from("dispute_messages")
-        .select("dispute_id")
+        .select("dispute_id, message, created_at")
         .in("dispute_id", candidateIds)
         .eq("recipient_role", "operative")
-    : { data: [] as { dispute_id: string }[] };
+        .order("created_at", { ascending: true })
+    : { data: [] as { dispute_id: string; message: string; created_at: string }[] };
 
-  const messagedIds = new Set((opMsgs || []).map((m) => m.dispute_id));
+  const firstMsgByDispute = new Map<string, string>();
+  for (const m of opMsgs || []) {
+    if (!firstMsgByDispute.has(m.dispute_id)) {
+      firstMsgByDispute.set(m.dispute_id, m.message);
+    }
+  }
+
+  const messagedIds = new Set(firstMsgByDispute.keys());
   const visible = (rows || []).filter(
     (r) => r.status === "resolved" || r.status === "closed" || messagedIds.has(r.id),
   );
@@ -65,13 +73,19 @@ export async function GET() {
 
   const jobMap = new Map((jobs || []).map((j) => [j.id, j]));
 
+  // Never expose the customer's raw dispute reason — only Kleen's mediated summary.
   const disputes = visible.map((r) => {
     const job = jobMap.get(r.job_id);
+    const kleenSummary = firstMsgByDispute.get(r.id)?.trim() || null;
     return {
       id: r.id,
       job_id: r.job_id,
       status: r.status,
-      reason: r.reason,
+      summary:
+        kleenSummary ||
+        (r.resolution
+          ? "This case has been closed by Kleen."
+          : "Kleen needs your response and any evidence for this job."),
       resolution: r.resolution,
       created_at: r.created_at,
       jobs: job
